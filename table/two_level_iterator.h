@@ -20,7 +20,8 @@ class Arena;
 
 struct TwoLevelIteratorState {
   explicit TwoLevelIteratorState(bool _check_prefix_may_match)
-      : check_prefix_may_match(_check_prefix_may_match) {}
+      : check_prefix_may_match(_check_prefix_may_match),
+    query_mbb(nullptr) {}
 
   virtual ~TwoLevelIteratorState() {}
   virtual InternalIterator* NewSecondaryIterator(const Slice& handle) = 0;
@@ -28,6 +29,8 @@ struct TwoLevelIteratorState {
 
   // If call PrefixMayMatch()
   bool check_prefix_may_match;
+
+  double *query_mbb;
 };
 
 

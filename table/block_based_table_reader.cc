@@ -1223,7 +1223,11 @@ class BlockBasedTable::BlockEntryIteratorState : public TwoLevelIteratorState {
                               nullptr),
         table_(table),
         read_options_(read_options),
-        skip_filters_(skip_filters) {}
+        skip_filters_(skip_filters) {
+    // NOTE vmx 2016-07-22: This isn't ideal, but a good way to get things
+    // somehow working.
+    query_mbb = read_options.query_mbb;
+  }
 
   InternalIterator* NewSecondaryIterator(const Slice& index_value) override {
     return NewDataBlockIterator(table_->rep_, read_options_, index_value);

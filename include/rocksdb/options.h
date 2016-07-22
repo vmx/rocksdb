@@ -1516,6 +1516,11 @@ struct ReadOptions {
   // Default: 0
   size_t readahead_size;
 
+  // NOTE vmx 2016-07-11: This is a dirty hack to pass in an query MBB
+  // directly. Using `Seek()` didn't work, as the iterators get destroyed
+  // and recreated after the seek.
+  double *query_mbb;
+
   ReadOptions();
   ReadOptions(bool cksum, bool cache);
 };

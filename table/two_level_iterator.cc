@@ -103,6 +103,18 @@ class TwoLevelIterator : public InternalIterator {
   std::string data_block_handle_;
 };
 
+bool MbbIntersect(double *a, double *b, size_t dimension) {
+  if (a == nullptr || b == nullptr) {
+    return false;
+  }
+  for (size_t i = 0; i < dimension; i++) {
+    if (a[i*2] > b[i*2 + 1] || a[i*2 + 1] < b[i*2]) {
+      return false;
+    }
+  }
+  return true;
+}
+
 TwoLevelIterator::TwoLevelIterator(TwoLevelIteratorState* state,
                                    InternalIterator* first_level_iter,
                                    bool need_free_iter_and_state)
@@ -133,6 +145,14 @@ void TwoLevelIterator::SeekToFirst() {
     second_level_iter_.SeekToFirst();
   }
   SkipEmptyDataBlocksForward();
+
+  // Skip it if it doesn't intersect with the query bounding box
+  double *query_mbb = state_->query_mbb;
+  while (query_mbb != nullptr && second_level_iter_.Valid() &&
+         !MbbIntersect(query_mbb, (double *)second_level_iter_.key().data(), 2)) {
+    second_level_iter_.Next();
+    SkipEmptyDataBlocksForward();
+  }
 }
 
 void TwoLevelIterator::SeekToLast() {
@@ -148,6 +168,13 @@ void TwoLevelIterator::Next() {
   assert(Valid());
   second_level_iter_.Next();
   SkipEmptyDataBlocksForward();
+
+  double *query_mbb = state_->query_mbb;
+  while (query_mbb != nullptr && second_level_iter_.Valid() &&
+         !MbbIntersect(query_mbb, (double *)second_level_iter_.key().data(), 2)) {
+    second_level_iter_.Next();
+    SkipEmptyDataBlocksForward();
+  }
 }
 
 void TwoLevelIterator::Prev() {

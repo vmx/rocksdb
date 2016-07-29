@@ -80,6 +80,8 @@ struct BlockBasedTableOptions {
     // The hash index, if enabled, will do the hash lookup when
     // `Options.prefix_extractor` is provided.
     kHashSearch,
+
+    kMbbSearch,
   };
 
   IndexType index_type = kBinarySearch;

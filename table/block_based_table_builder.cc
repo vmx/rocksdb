@@ -13,6 +13,7 @@
 #include <inttypes.h>
 #include <stdio.h>
 
+#include <algorithm>
 #include <map>
 #include <memory>
 #include <string>
@@ -265,6 +266,79 @@ class HashIndexBuilder : public IndexBuilder {
   uint64_t current_restart_index_ = 0;
 };
 
+
+// This is an index that saves a bounding box for each block
+class MbbIndexBuilder : public IndexBuilder {
+ public:
+  explicit MbbIndexBuilder(const Comparator* comparator)
+      : IndexBuilder(comparator) {
+    //current_mbb_[] = {0, 0, 0, 0};
+    //current_mbb_[4] = {std::numeric_limits<float>::infinity(),
+    //                  std::numeric_limits<float>::infinity(),
+    //                  std::numeric_limits<float>::infinity(),
+    //                  std::numeric_limits<float>::infinity()};
+  } // 
+
+  virtual void AddIndexEntry(std::string* last_key_in_current_block,
+                             const Slice* first_key_in_next_block,
+                             const BlockHandle& block_handle) override {
+    printf("vmx: block_based_table_builder: AddIndexEntry: %f %f %f %f\n", current_mbb_[0], current_mbb_[1], current_mbb_[2], current_mbb_[3]);
+    std::string handle_encoding;
+    block_handle.EncodeTo(&handle_encoding);
+    // XXX vmx 2016-07-28: Don't hard-code the size/dimensions
+    Slice mbb_encoding = rocksdb::Slice((const char*)&current_mbb_, 32);
+    Add(mbb_encoding, handle_encoding);
+    current_mbb_[0] = std::numeric_limits<double>::max();
+    current_mbb_[1] = std::numeric_limits<double>::min();
+    current_mbb_[2] = std::numeric_limits<double>::max();
+    current_mbb_[3] = std::numeric_limits<double>::min();
+  }
+
+  virtual void OnKeyAdded(const Slice& key) override {
+    double *added_mbb = const_cast<double *>(reinterpret_cast<const double *>(
+        key.data()));
+    printf("vmx: block_based_table_builder: OnKeyAdded: %f %f %f %f\n", added_mbb[0], added_mbb[1], added_mbb[2], added_mbb[3]);
+    // XXX vmx 2016-07-29: Don't hard-code to two dimensions
+    ExpandMbb(current_mbb_, added_mbb, 2);
+  };
+
+  virtual Status Finish(IndexBlocks* index_blocks) override {
+    // Store the actual index as block contents
+    index_blocks->index_block_contents = Slice(buffer_);
+    return Status::OK();
+  }
+
+  virtual size_t EstimatedSize() const override {
+    return buffer_.size();
+  }
+
+ private:
+  //BlockBuilder index_block_builder_;
+  double current_mbb_[4] = {std::numeric_limits<double>::max(),
+                            std::numeric_limits<double>::min(),
+                            std::numeric_limits<double>::max(),
+                            std::numeric_limits<double>::min()};
+  // The actual index
+  std::string           buffer_;
+
+  void Add(const Slice& key, const Slice& value) {
+    // Add <key_size><value_size>
+    PutVarint32Varint32(&buffer_, static_cast<uint32_t>(key.size()),
+                        static_cast<uint32_t>(value.size()));
+    // Add key and value
+    buffer_.append(key.data(), key.size());
+    buffer_.append(value.data(), value.size());
+  }
+
+  // Expands a given MBB with another one if needed
+  void ExpandMbb(double *original, double *other, size_t dims) {
+    for (size_t i = 0; i < dims * 2; i += 2) {
+      original[i] = std::min(original[i], other[i]);
+      original[i + 1] = std::max(original[i + 1], other[i + 1]);
+    }
+  }
+};
+
 // Without anonymous namespace here, we fail the warning -Wmissing-prototypes
 namespace {
 
@@ -280,6 +354,9 @@ IndexBuilder* CreateIndexBuilder(IndexType type, const Comparator* comparator,
     case BlockBasedTableOptions::kHashSearch: {
       return new HashIndexBuilder(comparator, prefix_extractor,
                                   index_block_restart_interval);
+    }
+    case BlockBasedTableOptions::kMbbSearch: {
+      return new MbbIndexBuilder(comparator);
     }
     default: {
       assert(!"Do not recognize the index type ");

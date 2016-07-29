@@ -324,6 +324,157 @@ class HashIndexReader : public IndexReader {
   BlockContents prefixes_contents_;
 };
 
+class MbbBlockIter : public InternalIterator {
+ public:
+  explicit MbbBlockIter(Slice *data, double *query_mbb)
+      : data_(data),
+        key_size_(0),
+        value_size_(0) {
+    query_mbb_ = query_mbb;
+    offset_ = data_->data();
+    //printf("vmx: block_based_table_reader: MbbBlockIter: size: %zu\n", data_->size());
+    //printf("vmx: block_based_table_reader: MbbBlockIter: query_mbb_: %f %f %f %f\n", query_mbb_[0],query_mbb_[1], query_mbb_[2], query_mbb_[3]);
+  }
+
+  bool Valid() const override {
+    //return data_->size() > offset_ + key_size_ + value_size_;
+    ptrdiff_t diff = offset_ - data_->data();
+    return data_->size() > (size_t)(diff + key_size_ + value_size_);
+  }
+
+  void SeekToFirst() override {
+    DecodeEntry();
+    while (Valid() && !MbbIntersect(query_mbb_, (double *)key().data(), 2)) {
+      //printf("vmx: block_based_table_reader: SeekToFirst: skipping\n");
+      DecodeEntry();
+    }
+  }
+  void SeekToLast() override {}
+  void Seek(const Slice& target) override {}
+
+  void Next() override {
+    DecodeEntry();
+    while (Valid() && !MbbIntersect(query_mbb_, (double *)key().data(), 2)) {
+      //printf("vmx: block_based_table_reader: Next: skipping\n");
+      DecodeEntry();
+    }
+  }
+
+  void Prev() override {}
+
+  Slice key() const override {
+    return key_;
+  }
+
+  Slice value() const override {
+    return value_;
+  }
+
+  Status status() const override { return Status::OK(); }
+ private:
+  Slice *data_;
+  // The size of the current key
+  uint32_t key_size_;
+  // The size of the current value
+  uint32_t value_size_;
+  Slice key_;
+  Slice value_;
+  // The offset (address) to the current key
+  const char* offset_;
+  double *query_mbb_;
+
+  void DecodeEntry() {
+    // We are still pointed to the last entry, advance to the next one
+    offset_ += key_size_ + value_size_;
+
+    const char* limit = data_->data() + data_->size();
+    if (limit - offset_ < 3) {
+      printf("vmx: block_based_table_reader: DecodeEntry: This shouldn't happen!\n");
+      return;
+    }
+    offset_ = GetVarint32Ptr(offset_, limit, &key_size_);
+    offset_ = GetVarint32Ptr(offset_, limit, &value_size_);
+
+    key_ = Slice(offset_, key_size_);
+    value_ = Slice(offset_ + key_size_, value_size_);
+
+    //double *mbb = (double *)key().data();
+    //printf("vmx: block_based_table_reader: DecodeEntry: key, value: %f %f %f %f: %s\n", mbb[0], mbb[1], mbb[2], mbb[3], value().ToString(true).c_str());
+  }
+
+  // XXX vmx 3016-07-29: That's copied from two_level_iterator.cc. Put it
+  // in some central place
+  bool MbbIntersect(double *a, double *b, size_t dimension) {
+    if (a == nullptr || b == nullptr) {
+      return false;
+    }
+    for (size_t i = 0; i < dimension; i++) {
+      if (a[i*2] > b[i*2 + 1] || a[i*2 + 1] < b[i*2]) {
+        return false;
+      }
+    }
+    return true;
+  }
+};
+
+class MbbSearchIndexReader : public IndexReader {
+ public:
+  static Status Create(RandomAccessFileReader* file, const Footer& footer,
+                       const BlockHandle& index_handle,
+                       const ImmutableCFOptions &ioptions,
+                       const Comparator* comparator, IndexReader** index_reader,
+                       const PersistentCacheOptions& cache_options) {
+    // NOTE vmx 2016-07-29: This should probably be a std::unique_ptr<BlockContents>
+    BlockContents contents;
+    // The whole logic of the `Block` isn't needed, we just want the contents
+    // of the block, hence i'ts not a call to `ReadBlockFromFile`.
+    Status s = ReadBlockContents(file, footer, ReadOptions(), index_handle,
+                                 &contents, ioptions, true /* decompress */,
+                                 Slice() /*compression dict*/, cache_options);
+    if (s.ok()) {
+      *index_reader = new MbbSearchIndexReader(
+          comparator, std::move(contents), ioptions.statistics);
+    }
+
+    return s;
+  }
+
+  virtual InternalIterator* NewIterator(BlockIter* iter = nullptr,
+                                          bool dont_care = true) override {
+    // NOTE vmx 2016-07-29: This one shouldn't get called
+    assert(false);
+  }
+
+  // That's a bad hack as we can't directly pass in the query_mbb into
+  // NewIterator
+  InternalIterator* NewMbbIterator(BlockIter* iter, double *query_mbb) {
+    return new MbbBlockIter(&index_contents_.data, query_mbb);
+  }
+
+  //virtual size_t size() const override { return index_block_->size(); }
+  virtual size_t size() const override { return index_contents_.data.size(); }
+  virtual size_t usable_size() const override {
+    //return index_block_->usable_size();
+    return 0;
+  }
+
+  virtual size_t ApproximateMemoryUsage() const override {
+    //assert(index_block_);
+    //return index_block_->ApproximateMemoryUsage();
+    return 0;
+  }
+
+ private:
+  // NOTE vmx 2016-07-29: This should probably be a std::unique_ptr<BlockContents>
+  BlockContents index_contents_;
+  MbbSearchIndexReader(const Comparator* comparator,
+                       //std::unique_ptr<BlockContents>&& index_contents,
+                       BlockContents&& index_contents,
+                       Statistics* stats)
+      : IndexReader(comparator, stats), index_contents_(std::move(index_contents)) {
+  }
+};
+
 // CachableEntry represents the entries that *may* be fetched from block cache.
 //  field `value` is the item we want to get.
 //  field `cache_handle` is the cache handle to the block cache. If the value
@@ -1015,6 +1166,13 @@ InternalIterator* BlockBasedTable::NewIndexIterator(
     CachableEntry<IndexReader>* index_entry) {
   // index reader has already been pre-populated.
   if (rep_->index_reader) {
+    // XXX vmx 2016-07-29: This is a hack to get the query_mbb somehow into
+    // the iterator
+    MbbSearchIndexReader *mbb_search_index_reader = dynamic_cast<MbbSearchIndexReader *>(rep_->index_reader.get());
+    if (mbb_search_index_reader != nullptr) {
+      return mbb_search_index_reader->NewMbbIterator(
+          input_iter, read_options.query_mbb);
+    }
     return rep_->index_reader->NewIterator(
         input_iter, read_options.total_order_seek);
   }
@@ -1621,6 +1779,11 @@ Status BlockBasedTable::CreateIndexReader(
           rep_->internal_prefix_transform.get(), footer, file, rep_->ioptions,
           comparator, footer.index_handle(), meta_index_iter, index_reader,
           rep_->hash_index_allow_collision, rep_->persistent_cache_options);
+    }
+    case BlockBasedTableOptions::kMbbSearch: {
+      return MbbSearchIndexReader::Create(
+          file, footer, footer.index_handle(), rep_->ioptions, comparator,
+          index_reader, rep_->persistent_cache_options);
     }
     default: {
       std::string error_message =

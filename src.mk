@@ -82,6 +82,9 @@ LIB_SOURCES =                                                   \
   table/plain_table_index.cc                                    \
   table/plain_table_key_coding.cc                               \
   table/plain_table_reader.cc                                   \
+  table/rtree_table_builder.cc                                  \
+  table/rtree_table_factory.cc                                  \
+  table/rtree_table_reader.cc                                   \
   table/persistent_cache_helper.cc                              \
   table/table_properties.cc                                     \
   table/two_level_iterator.cc                                   \

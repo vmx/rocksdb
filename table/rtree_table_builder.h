@@ -8,11 +8,9 @@
 #include <stdint.h>
 #include <string>
 #include <vector>
-#include "rocksdb/options.h"
+#include "rocksdb/slice.h"
 #include "rocksdb/status.h"
-#include "rocksdb/table.h"
 #include "rocksdb/table_properties.h"
-#include "table/bloom_block.h"
 #include "table/table_builder.h"
 #include "util/arena.h"
 
@@ -81,8 +79,6 @@ class RtreeTableBuilder: public TableBuilder {
   TableProperties properties_;
 
   bool closed_ = false;  // Either Finish() or Abandon() has been called.
-
-  const SliceTransform* prefix_extractor_;
 
   // No copying allowed
   RtreeTableBuilder(const RtreeTableBuilder&) = delete;

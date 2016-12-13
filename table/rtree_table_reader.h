@@ -5,37 +5,26 @@
 #pragma once
 
 #ifndef ROCKSDB_LITE
+#include <algorithm>                  // for move
 #include <unordered_map>
 #include <memory>
 #include <vector>
 #include <string>
 #include <stdint.h>
 
-#include "db/dbformat.h"
-#include "rocksdb/env.h"
-#include "rocksdb/iterator.h"
-#include "rocksdb/slice_transform.h"
-#include "rocksdb/table.h"
-#include "rocksdb/table_properties.h"
-#include "table/table_reader.h"
-#include "table/rtree_table_factory.h"
-#include "util/arena.h"
+
+#include "db/dbformat.h"              // for InternalKeyComparator, ParsedIn...
+#include "rocksdb/slice.h"            // for Slice
+#include "rocksdb/status.h"           // for Status
+#include "rocksdb/env.h"              // for EnvOptions
+#include "table/table_reader.h"       // for TableReader
+#include "util/arena.h"               // for Arena
+#include "util/file_reader_writer.h"  // for RandomAccessFileReade
 #include "util/cf_options.h"
-#include "util/dynamic_bloom.h"
-#include "util/file_reader_writer.h"
 
 namespace rocksdb {
 
-class Block;
-struct BlockContents;
-class BlockHandle;
-class Footer;
-struct Options;
-class RandomAccessFile;
 struct ReadOptions;
-class TableCache;
-class TableReader;
-class InternalKeyComparator;
 class GetContext;
 class InternalIterator;
 
@@ -115,7 +104,6 @@ class RtreeTableReader: public TableReader {
   RtreeTableReaderFileInfo file_info_;
   Arena arena_;
 
-  const ImmutableCFOptions& ioptions_;
   uint64_t file_size_;
   std::shared_ptr<const TableProperties> table_properties_;
 

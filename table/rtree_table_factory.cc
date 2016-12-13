@@ -7,10 +7,9 @@
 
 #include <memory>
 #include <stdint.h>
-#include "db/dbformat.h"
 #include "table/rtree_table_builder.h"
 #include "table/rtree_table_reader.h"
-#include "port/port.h"
+#include "table/table_builder.h"
 
 namespace rocksdb {
 

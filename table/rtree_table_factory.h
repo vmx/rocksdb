@@ -9,8 +9,8 @@
 #include <string>
 #include <stdint.h>
 
-#include "rocksdb/options.h"
-#include "rocksdb/table.h"
+#include "rocksdb/status.h"          // for Status
+#include "rocksdb/table.h"           // for RtreeTableOptions, TableFactory
 
 namespace rocksdb {
 

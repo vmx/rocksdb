@@ -4,51 +4,21 @@
 
 #ifndef ROCKSDB_LITE
 
-#include "table/rtree_table_reader.h"
-
-#include <string>
-#include <vector>
-
 #include "db/dbformat.h"
 
-#include "rocksdb/cache.h"
-#include "rocksdb/comparator.h"
-#include "rocksdb/env.h"
-#include "rocksdb/filter_policy.h"
-#include "rocksdb/options.h"
-#include "rocksdb/statistics.h"
+#include "rocksdb/slice.h"     // for Slice
+#include "rocksdb/status.h"    // for Status
+#include "rocksdb/table_properties.h"
 
-#include "table/block.h"
-#include "table/bloom_block.h"
-#include "table/filter_block.h"
-#include "table/format.h"
+#include "table/rtree_table_reader.h"
+#include "table/get_context.h"
 #include "table/internal_iterator.h"
 #include "table/meta_blocks.h"
-#include "table/two_level_iterator.h"
-#include "table/rtree_table_factory.h"
-#include "table/get_context.h"
 
 #include "util/arena.h"
-#include "util/coding.h"
-#include "util/dynamic_bloom.h"
-#include "util/hash.h"
-#include "util/histogram.h"
-#include "util/murmurhash.h"
-#include "util/perf_context_imp.h"
-#include "util/stop_watch.h"
-#include "util/string_util.h"
 
 
 namespace rocksdb {
-
-namespace {
-
-// Safely getting a uint32_t element from a char array, where, starting from
-// `base`, every 4 bytes are considered as an fixed 32 bit integer.
-inline uint32_t GetFixed32Element(const char* base, size_t offset) {
-  return DecodeFixed32(base + offset * sizeof(uint32_t));
-}
-}  // namespace
 
 // Iterator to iterate IndexedTable
 class RtreeTableIterator : public InternalIterator {
@@ -98,7 +68,6 @@ RtreeTableReader::RtreeTableReader(const ImmutableCFOptions& ioptions,
     : internal_comparator_(icomparator),
       file_info_(std::move(file), storage_options,
                  static_cast<uint32_t>(table_properties->data_size)),
-      ioptions_(ioptions),
       file_size_(file_size),
       table_properties_(nullptr) {}
 

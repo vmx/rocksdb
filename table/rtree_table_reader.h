@@ -101,7 +101,6 @@ class RtreeTableReader: public TableReader {
   // sst file that stores data.
   const uint32_t data_start_offset_ = 0;
 
-  RtreeTableReaderFileInfo file_info_;
   Arena arena_;
 
   uint64_t file_size_;

@@ -48,8 +48,8 @@ class RtreeTableIterator : public InternalIterator {
 
  private:
   RtreeTableReader* table_;
-  uint32_t offset_;
-  uint32_t next_offset_;
+//  uint32_t offset_;
+//  uint32_t next_offset_;
   Slice key_;
   Slice value_;
   Status status_;
@@ -66,8 +66,6 @@ RtreeTableReader::RtreeTableReader(const ImmutableCFOptions& ioptions,
                                    uint64_t file_size,
                                    const TableProperties* table_properties)
     : internal_comparator_(icomparator),
-      file_info_(std::move(file), storage_options,
-                 static_cast<uint32_t>(table_properties->data_size)),
       file_size_(file_size),
       table_properties_(nullptr) {}
 
@@ -91,11 +89,6 @@ Status RtreeTableReader::Open(const ImmutableCFOptions& ioptions,
       ioptions, std::move(file), env_options, internal_comparator,
       file_size, props));
 
-  s = new_reader->MmapDataIfNeeded();
-  if (!s.ok()) {
-    return s;
-  }
-
   *table_reader = std::move(new_reader);
   return s;
 }
@@ -112,15 +105,6 @@ InternalIterator* RtreeTableReader::NewIterator(const ReadOptions& options,
     auto mem = arena->AllocateAligned(sizeof(RtreeTableIterator));
     return new (mem) RtreeTableIterator(this);
   }
-}
-
-
-Status RtreeTableReader::MmapDataIfNeeded() {
-  if (file_info_.is_mmap_mode) {
-    // Get mmapped memory.
-    return file_info_.file->Read(0, file_size_, &file_info_.file_data, nullptr);
-  }
-  return Status::OK();
 }
 
 Status RtreeTableReader::Next(uint32_t* offset,
@@ -150,25 +134,26 @@ void RtreeTableReader::Prepare(const Slice& target) {
 
 Status RtreeTableReader::Get(const ReadOptions& ro, const Slice& target,
                              GetContext* get_context, bool skip_filters) {
-  uint32_t offset = 0;
-
-  ParsedInternalKey found_key;
-  ParsedInternalKey parsed_target;
-  if (!ParseInternalKey(target, &parsed_target)) {
-    return Status::Corruption(Slice());
-  }
-  Slice found_value;
-  while (offset < file_info_.data_end_offset) {
-    Status s = Next(&offset, &found_key, nullptr, &found_value);
-    if (!s.ok()) {
-      return s;
-    }
-    if (internal_comparator_.Compare(found_key, parsed_target) >= 0) {
-      if (!get_context->SaveValue(found_key, found_value)) {
-        break;
-      }
-    }
-  }
+// TODO vmx 2016-12-14: Do a table scan to find the value
+//  uint32_t offset = 0;
+//
+//  ParsedInternalKey found_key;
+//  ParsedInternalKey parsed_target;
+//  if (!ParseInternalKey(target, &parsed_target)) {
+//    return Status::Corruption(Slice());
+//  }
+//  Slice found_value;
+//  while (offset < file_info_.data_end_offset) {
+//    Status s = Next(&offset, &found_key, nullptr, &found_value);
+//    if (!s.ok()) {
+//      return s;
+//    }
+//    if (internal_comparator_.Compare(found_key, parsed_target) >= 0) {
+//      if (!get_context->SaveValue(found_key, found_value)) {
+//        break;
+//      }
+//    }
+//  }
   return Status::OK();
 }
 
@@ -178,24 +163,17 @@ uint64_t RtreeTableReader::ApproximateOffsetOf(const Slice& key) {
 
 RtreeTableIterator::RtreeTableIterator(RtreeTableReader* table)
     : table_(table) {
-  next_offset_ = offset_ = table_->file_info_.data_end_offset;
 }
 
 RtreeTableIterator::~RtreeTableIterator() {
 }
 
 bool RtreeTableIterator::Valid() const {
-  return offset_ < table_->file_info_.data_end_offset &&
-         offset_ >= table_->data_start_offset_;
+  return false;
 }
 
 void RtreeTableIterator::SeekToFirst() {
-  next_offset_ = table_->data_start_offset_;
-  if (next_offset_ >= table_->file_info_.data_end_offset) {
-    next_offset_ = offset_ = table_->file_info_.data_end_offset;
-  } else {
-    Next();
-  }
+// TODO vmx 2016-12-14: Do a table scan to find the value
 }
 
 void RtreeTableIterator::SeekToLast() {
@@ -204,15 +182,16 @@ void RtreeTableIterator::SeekToLast() {
 }
 
 void RtreeTableIterator::Seek(const Slice& target) {
-  if (next_offset_ < table_->file_info_.data_end_offset) {
-    for (Next(); status_.ok() && Valid(); Next()) {
-      if (table_->internal_comparator_.Compare(key(), target) >= 0) {
-        break;
-      }
-    }
-  } else {
-    offset_ = table_->file_info_.data_end_offset;
-  }
+// TODO vmx 2016-12-14: Do a table scan to find the value
+//  if (next_offset_ < table_->file_info_.data_end_offset) {
+//    for (Next(); status_.ok() && Valid(); Next()) {
+//      if (table_->internal_comparator_.Compare(key(), target) >= 0) {
+//        break;
+//      }
+//    }
+//  } else {
+//    offset_ = table_->file_info_.data_end_offset;
+//  }
 }
 
 void RtreeTableIterator::SeekForPrev(const Slice& target) {
@@ -222,16 +201,17 @@ void RtreeTableIterator::SeekForPrev(const Slice& target) {
 }
 
 void RtreeTableIterator::Next() {
-  offset_ = next_offset_;
-  if (offset_ < table_->file_info_.data_end_offset) {
-    Slice tmp_slice;
-    ParsedInternalKey parsed_key;
-    status_ =
-        table_->Next(&next_offset_, &parsed_key, &key_, &value_);
-    if (!status_.ok()) {
-      offset_ = next_offset_ = table_->file_info_.data_end_offset;
-    }
-  }
+// TODO vmx 2016-12-14: Do a table scan to find the value
+//  offset_ = next_offset_;
+//  if (offset_ < table_->file_info_.data_end_offset) {
+//    Slice tmp_slice;
+//    ParsedInternalKey parsed_key;
+//    status_ =
+//        table_->Next(&next_offset_, &parsed_key, &key_, &value_);
+//    if (!status_.ok()) {
+//      offset_ = next_offset_ = table_->file_info_.data_end_offset;
+//    }
+//  }
 }
 
 void RtreeTableIterator::Prev() {

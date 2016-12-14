@@ -74,7 +74,6 @@ class RtreeTableBuilder: public TableBuilder {
       table_properties_collectors_;
 
   WritableFileWriter* file_;
-  uint64_t offset_ = 0;
   Status status_;
   TableProperties properties_;
 

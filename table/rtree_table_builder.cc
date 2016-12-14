@@ -22,17 +22,12 @@ namespace rocksdb {
 namespace {
 
 // a utility that helps writing block content to the file
-//   @offset will advance if @block_contents was successfully written.
 //   @block_handle the block handle this particular block.
 Status WriteBlock(const Slice& block_contents, WritableFileWriter* file,
-                  uint64_t* offset, BlockHandle* block_handle) {
-  block_handle->set_offset(*offset);
+                  BlockHandle* block_handle) {
+  block_handle->set_offset(file->GetFileSize());
   block_handle->set_size(block_contents.size());
   Status s = file->Append(block_contents);
-
-  if (s.ok()) {
-    *offset += block_contents.size();
-  }
   return s;
 }
 
@@ -51,13 +46,9 @@ RtreeTableBuilder::RtreeTableBuilder(
     const std::string& column_family_name)
     : ioptions_(ioptions),
       file_(file) {
-  // for plain table, we put all the data in a big chuck.
+  // for the rtree table, we put all the data in a big chuck.
   properties_.num_data_blocks = 1;
-  // Fill it later if store_index_in_file_ == true
-  properties_.index_size = 0;
-  properties_.filter_size = 0;
-  // To support roll-back to previous version, now still use version 0 for
-  // plain encoding.
+
   properties_.column_family_id = column_family_id;
   properties_.column_family_name = column_family_name;
 
@@ -81,14 +72,13 @@ void RtreeTableBuilder::Add(const Slice& key, const Slice& value) {
     return;
   }
 
-  // Write value
-  assert(offset_ <= std::numeric_limits<uint32_t>::max());
-
-  // Write key-value pair
-  file_->Append(key);
-  offset_ += key.size();
-  file_->Append(value);
-  offset_ += value.size();
+  // The WritableFile expects a slice. Hence we prepare a slice of the form
+  // key size | key | value size | value
+  std::string key_value;
+  // Store the actual key, not the internal representation
+  PutLengthPrefixedSlice(&key_value, internal_key.user_key);
+  PutLengthPrefixedSlice(&key_value, value);
+  file_->Append(key_value);
 
   properties_.num_entries++;
   properties_.raw_key_size += key.size();
@@ -96,7 +86,8 @@ void RtreeTableBuilder::Add(const Slice& key, const Slice& value) {
 
   // notify property collectors
   NotifyCollectTableCollectorsOnAdd(
-      key, value, offset_, table_properties_collectors_, ioptions_.info_log);
+      key, value, FileSize(), table_properties_collectors_,
+      ioptions_.info_log);
 }
 
 Status RtreeTableBuilder::status() const { return status_; }
@@ -105,7 +96,7 @@ Status RtreeTableBuilder::Finish() {
   assert(!closed_);
   closed_ = true;
 
-  properties_.data_size = offset_;
+  properties_.data_size = FileSize();
 
   //  Write the following blocks
   //  1. [meta block: properties]
@@ -131,7 +122,6 @@ Status RtreeTableBuilder::Finish() {
   auto s = WriteBlock(
       property_block_builder.Finish(),
       file_,
-      &offset_,
       &property_block_handle
   );
   if (!s.ok()) {
@@ -144,7 +134,6 @@ Status RtreeTableBuilder::Finish() {
   s = WriteBlock(
       meta_index_builer.Finish(),
       file_,
-      &offset_,
       &metaindex_block_handle
   );
   if (!s.ok()) {
@@ -159,9 +148,6 @@ Status RtreeTableBuilder::Finish() {
   std::string footer_encoding;
   footer.EncodeTo(&footer_encoding);
   s = file_->Append(footer_encoding);
-  if (s.ok()) {
-    offset_ += footer_encoding.size();
-  }
 
   return s;
 }
@@ -175,7 +161,7 @@ uint64_t RtreeTableBuilder::NumEntries() const {
 }
 
 uint64_t RtreeTableBuilder::FileSize() const {
-  return offset_;
+  return file_->GetFileSize();
 }
 
 }  // namespace rocksdb

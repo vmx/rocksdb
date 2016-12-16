@@ -4,6 +4,8 @@
 
 #ifndef ROCKSDB_LITE
 
+#include <iostream>
+
 #include "db/dbformat.h"
 
 #include "rocksdb/slice.h"     // for Slice
@@ -16,7 +18,6 @@
 #include "table/meta_blocks.h"
 
 #include "util/arena.h"
-
 
 namespace rocksdb {
 
@@ -66,8 +67,9 @@ RtreeTableReader::RtreeTableReader(const ImmutableCFOptions& ioptions,
                                    uint64_t file_size,
                                    const TableProperties* table_properties)
     : internal_comparator_(icomparator),
+      file_(std::move(file)),
       file_size_(file_size),
-      table_properties_(nullptr) {}
+      table_properties_(table_properties) {}
 
 RtreeTableReader::~RtreeTableReader() {
 }
@@ -107,26 +109,39 @@ InternalIterator* RtreeTableReader::NewIterator(const ReadOptions& options,
   }
 }
 
-Status RtreeTableReader::Next(uint32_t* offset,
-                              ParsedInternalKey* parsed_key,
-                              Slice* internal_key,
-                              Slice* value) const {
-//  if (offset >= file_size_) {
-//    return file_size_;
-//  }
-//  Status s = file_->Read(offset, internal_key.size(), key, nullptr);
-//  offset += internal_key.size();
-// 
-//  s = file_->Read(offset, 4, tmp_slice, nullptr);
-//  offset += 4;
-//  uint32_t value_size = DecodeFixed32(tmp_slice->data());
-// 
-//  s = file_->Read(offset, value_size, value, nullptr);
-//  offset += value_size;
+//Status RtreeTableReader::ReadFixedSlice(uint64_t* offset, Slice* slice) const {
+std::string RtreeTableReader::ReadFixedSlice(uint64_t* offset) const {
+  Slice uint64_slice;
+  char uint64_buf[sizeof(uint64_t)];
 
-  //  return offset;
-  // XXX vmx 2016-12-13: implement  the actual iterator
-  return Status::OK();
+  uint64_t slice_size;
+  Status status = file_->Read(*offset, sizeof(uint64_t), &uint64_slice,
+                              uint64_buf);
+  GetFixed64(&uint64_slice, &slice_size);
+  *offset += sizeof(uint64_t);
+
+  Slice slice;
+  std::string slice_buf;
+  slice_buf.reserve(slice_size);
+  status = file_->Read(*offset, slice_size, &slice,
+                       const_cast<char *>(slice_buf.c_str()));
+  *offset += slice_size;
+  return slice.ToString();
+}
+
+std::tuple<Status, std::string, std::string> RtreeTableReader::NextKeyValue(uint64_t* offset)
+    const {
+  if (*offset >= table_properties_->data_size) {
+    return std::make_tuple(
+        Status::Corruption("There is no further key-value pair"), "", "");
+  }
+
+  std::string key = ReadFixedSlice(offset);
+  std::string value = ReadFixedSlice(offset);
+
+  std::cout << "NextKeyValue: key value: " << key << ": " << value << std::endl;
+
+  return std::make_tuple(Status::OK(), key, value);
 }
 
 void RtreeTableReader::Prepare(const Slice& target) {
@@ -134,26 +149,35 @@ void RtreeTableReader::Prepare(const Slice& target) {
 
 Status RtreeTableReader::Get(const ReadOptions& ro, const Slice& target,
                              GetContext* get_context, bool skip_filters) {
-// TODO vmx 2016-12-14: Do a table scan to find the value
-//  uint32_t offset = 0;
-//
-//  ParsedInternalKey found_key;
-//  ParsedInternalKey parsed_target;
-//  if (!ParseInternalKey(target, &parsed_target)) {
-//    return Status::Corruption(Slice());
-//  }
-//  Slice found_value;
-//  while (offset < file_info_.data_end_offset) {
-//    Status s = Next(&offset, &found_key, nullptr, &found_value);
-//    if (!s.ok()) {
-//      return s;
-//    }
-//    if (internal_comparator_.Compare(found_key, parsed_target) >= 0) {
-//      if (!get_context->SaveValue(found_key, found_value)) {
-//        break;
-//      }
-//    }
-//  }
+  size_t offset = 0;
+
+  Slice found_key;
+  ParsedInternalKey parsed_target;
+  if (!ParseInternalKey(target, &parsed_target)) {
+    return Status::Corruption(Slice());
+  }
+  Slice found_value;
+  while (offset < file_size_) {
+    Status status;
+    std::string key;
+    std::string value;
+    ParsedInternalKey parsed_key;
+
+    std::tie(status, key, value) = NextKeyValue(&offset);
+    if (!status.ok()) {
+      return status;
+    }
+    ParseInternalKey(Slice(key), &parsed_key);
+    std::cout << "Get: key value: " << parsed_key.user_key.ToString() << ": " << value << std::endl;
+    if (parsed_key.user_key == parsed_target.user_key) {
+      std::cout << "Get: search key found: " << key << std::endl;
+      if (!get_context->SaveValue(parsed_key, Slice(value))) {
+        break;
+      }
+    } else {
+      std::cout << "Get: search key *not* found: " << key << std::endl;
+    }
+  }
   return Status::OK();
 }
 
@@ -163,6 +187,7 @@ uint64_t RtreeTableReader::ApproximateOffsetOf(const Slice& key) {
 
 RtreeTableIterator::RtreeTableIterator(RtreeTableReader* table)
     : table_(table) {
+  std::cout << table_ << std::endl;
 }
 
 RtreeTableIterator::~RtreeTableIterator() {

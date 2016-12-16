@@ -103,6 +103,7 @@ class RtreeTableReader: public TableReader {
 
   Arena arena_;
 
+  unique_ptr<RandomAccessFileReader> file_;
   uint64_t file_size_;
   std::shared_ptr<const TableProperties> table_properties_;
 
@@ -116,8 +117,17 @@ class RtreeTableReader: public TableReader {
   // format.
   // if `seekable` is not null, it will return whether we can directly read
   // data using this offset.
-  Status Next(uint32_t* offset, ParsedInternalKey* parsed_key,
-              Slice* internal_key, Slice* value) const;
+  //Status Next(uint64_t* offset, ParsedInternalKey* parsed_key,
+  //            Slice* internal_key, Slice* value) const;
+
+  // Reads a slice from `offset` which is prefixed with a 64 fixed sized int.
+  // It will also advance the offset to the next slice
+  //Status ReadFixedSlice(uint64_t* offset, Slice* slice) const;
+  std::string ReadFixedSlice(uint64_t* offset) const;
+
+  // Get the next key value pair. Advance the offset to the next one.
+  std::tuple<Status, std::string, std::string> NextKeyValue(uint64_t* offset) const;
+
 
   // No copying allowed
   explicit RtreeTableReader(const TableReader&) = delete;

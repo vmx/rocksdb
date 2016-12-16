@@ -75,9 +75,12 @@ void RtreeTableBuilder::Add(const Slice& key, const Slice& value) {
   // The WritableFile expects a slice. Hence we prepare a slice of the form
   // key size | key | value size | value
   std::string key_value;
-  // Store the actual key, not the internal representation
-  PutLengthPrefixedSlice(&key_value, internal_key.user_key);
-  PutLengthPrefixedSlice(&key_value, value);
+  // We need to store the internal key as that's expected for further
+  // operations within RocksDB
+  PutFixed64(&key_value, key.size());
+  key_value.append(key.data(), key.size());
+  PutFixed64(&key_value, value.size());
+  key_value.append(value.data(), value.size());
   file_->Append(key_value);
 
   properties_.num_entries++;

@@ -178,10 +178,10 @@ uint64_t RtreeTableReader::ApproximateOffsetOf(const Slice& key) {
 
 RtreeTableIterator::RtreeTableIterator(RtreeTableReader* table)
     : table_(table),
-      offset_(0) {
-  // Make sure `key()` and `value()` point to valid data after the
-  // initialization, hence call `SeekToFirst()`
-  SeekToFirst();
+      // When an interator is initialized, a call to `Valid()` must return
+      // false (according to the tests). Hence set the `offset_` to a value
+      // bigger than the data size.
+      offset_(table_->DataSize() + 1) {
 }
 
 RtreeTableIterator::~RtreeTableIterator() {

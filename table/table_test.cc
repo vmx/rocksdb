@@ -40,6 +40,7 @@
 #include "table/internal_iterator.h"
 #include "table/meta_blocks.h"
 #include "table/plain_table_factory.h"
+#include "table/rtree_table_factory.h"
 #include "table/scoped_arena_iterator.h"
 #include "table/sst_file_writer_collectors.h"
 #include "util/compression.h"
@@ -57,6 +58,7 @@ extern const uint64_t kLegacyBlockBasedTableMagicNumber;
 extern const uint64_t kLegacyPlainTableMagicNumber;
 extern const uint64_t kBlockBasedTableMagicNumber;
 extern const uint64_t kPlainTableMagicNumber;
+extern const uint64_t kRtreeTableMagicNumber;
 
 namespace {
 
@@ -547,6 +549,7 @@ enum TestType {
   PLAIN_TABLE_FULL_STR_PREFIX,
   PLAIN_TABLE_TOTAL_ORDER,
 #endif  // !ROCKSDB_LITE
+  RTREE_TABLE_TEST,
   BLOCK_TEST,
   MEMTABLE_TEST,
   DB_TEST
@@ -570,6 +573,7 @@ static std::vector<TestArgs> GenerateArgList() {
       PLAIN_TABLE_FULL_STR_PREFIX,
       PLAIN_TABLE_TOTAL_ORDER,
 #endif  // !ROCKSDB_LITE
+      RTREE_TABLE_TEST,
       BLOCK_TEST,
       MEMTABLE_TEST, DB_TEST};
   std::vector<bool> reverse_compare_types = {false, true};
@@ -623,6 +627,13 @@ static std::vector<TestArgs> GenerateArgList() {
         continue;
       }
 #endif  // !ROCKSDB_LITE
+      if (test_type == RTREE_TABLE_TEST) {
+        TestArgs one_arg;
+        one_arg.type = test_type;
+        one_arg.use_mmap = false;
+        test_args.push_back(one_arg);
+        continue;
+      }
 
       for (auto restart_interval : restart_intervals) {
         for (auto compression_type : compression_types) {
@@ -752,6 +763,15 @@ class HarnessTest : public testing::Test {
             new InternalKeyComparator(options_.comparator));
         break;
 #endif  // !ROCKSDB_LITE
+      case RTREE_TABLE_TEST:
+        support_prev_ = false;
+        options_.table_factory.reset(NewRtreeTableFactory());
+        // Without setting the constructor it will segfault
+        constructor_ = new TableConstructor(
+            options_.comparator, true /* convert_to_internal_key_ */);
+        internal_comparator_.reset(
+            new InternalKeyComparator(options_.comparator));
+        break;
       case BLOCK_TEST:
         table_options_.block_size = 256;
         options_.table_factory.reset(
@@ -1003,6 +1023,7 @@ class TableTest : public testing::Test {
 class GeneralTableTest : public TableTest {};
 class BlockBasedTableTest : public TableTest {};
 class PlainTableTest : public TableTest {};
+class RtreeTableTest : public TableTest {};
 class TablePropertyTest : public testing::Test {};
 
 // This test serves as the living tutorial for the prefix scan of user collected

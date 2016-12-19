@@ -110,7 +110,7 @@ std::string RtreeTableReader::ReadFixedSlice(uint64_t* offset) const {
   Slice uint64_slice;
   char uint64_buf[sizeof(uint64_t)];
 
-  uint64_t slice_size;
+  uint64_t slice_size = 0;
   Status status = file_->Read(*offset, sizeof(uint64_t), &uint64_slice,
                               uint64_buf);
   GetFixed64(&uint64_slice, &slice_size);

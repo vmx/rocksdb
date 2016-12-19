@@ -4,7 +4,6 @@
 
 #pragma once
 
-#ifndef ROCKSDB_LITE
 #include <algorithm>                  // for move
 #include <unordered_map>
 #include <memory>
@@ -138,4 +137,3 @@ class RtreeTableReader: public TableReader {
   void operator=(const TableReader&) = delete;
 };
 }  // namespace rocksdb
-#endif  // ROCKSDB_LITE

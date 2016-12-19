@@ -3,7 +3,6 @@
 //  LICENSE file in the root directory of this source tree. An additional grant
 //  of patent rights can be found in the PATENTS file in the same directory.
 
-#ifndef ROCKSDB_LITE
 #include "table/rtree_table_builder.h"
 
 #include <assert.h>
@@ -168,4 +167,3 @@ uint64_t RtreeTableBuilder::FileSize() const {
 }
 
 }  // namespace rocksdb
-#endif  // ROCKSDB_LITE

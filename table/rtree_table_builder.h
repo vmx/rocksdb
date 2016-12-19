@@ -4,7 +4,6 @@
 //  of patent rights can be found in the PATENTS file in the same directory.
 
 #pragma once
-#ifndef ROCKSDB_LITE
 #include <stdint.h>
 #include <string>
 #include <vector>
@@ -85,5 +84,3 @@ class RtreeTableBuilder: public TableBuilder {
 };
 
 }  // namespace rocksdb
-
-#endif  // ROCKSDB_LITE

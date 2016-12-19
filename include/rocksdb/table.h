@@ -380,12 +380,12 @@ struct CuckooTableOptions {
 extern TableFactory* NewCuckooTableFactory(
     const CuckooTableOptions& table_options = CuckooTableOptions());
 
+#endif  // ROCKSDB_LITE
+
 
 struct RtreeTableOptions {};
 extern TableFactory* NewRtreeTableFactory(const RtreeTableOptions& options = RtreeTableOptions());
 
-
-#endif  // ROCKSDB_LITE
 
 class RandomAccessFileReader;
 

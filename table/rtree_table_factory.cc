@@ -2,7 +2,6 @@
 // Use of this source code is governed by a BSD-style license that can be
 // found in the LICENSE file. See the AUTHORS file for names of contributors.
 
-#ifndef ROCKSDB_LITE
 #include "table/rtree_table_factory.h"
 
 #include <memory>
@@ -62,4 +61,3 @@ extern TableFactory* NewRtreeTableFactory(const RtreeTableOptions& options) {
 //    "rocksdb.plain.table.encoding.type";
 
 }  // namespace rocksdb
-#endif  // ROCKSDB_LITE

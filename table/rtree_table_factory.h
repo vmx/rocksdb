@@ -4,7 +4,6 @@
 
 #pragma once
 
-#ifndef ROCKSDB_LITE
 #include <memory>
 #include <string>
 #include <stdint.h>
@@ -61,4 +60,3 @@ class RtreeTableFactory : public TableFactory {
 };
 
 }  // namespace rocksdb
-#endif  // ROCKSDB_LITE

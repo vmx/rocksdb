@@ -49,10 +49,9 @@ class RtreeTableIterator : public InternalIterator {
 
  private:
   RtreeTableReader* table_;
-//  uint32_t offset_;
-//  uint32_t next_offset_;
-  Slice key_;
-  Slice value_;
+  uint64_t offset_;
+  std::string key_;
+  std::string value_;
   Status status_;
   // No copying allowed
   RtreeTableIterator(const RtreeTableIterator&) = delete;
@@ -109,7 +108,6 @@ InternalIterator* RtreeTableReader::NewIterator(const ReadOptions& options,
   }
 }
 
-//Status RtreeTableReader::ReadFixedSlice(uint64_t* offset, Slice* slice) const {
 std::string RtreeTableReader::ReadFixedSlice(uint64_t* offset) const {
   Slice uint64_slice;
   char uint64_buf[sizeof(uint64_t)];
@@ -126,7 +124,7 @@ std::string RtreeTableReader::ReadFixedSlice(uint64_t* offset) const {
   status = file_->Read(*offset, slice_size, &slice,
                        const_cast<char *>(slice_buf.c_str()));
   *offset += slice_size;
-  return slice.ToString();
+  return std::string(slice.data(), slice.size());
 }
 
 std::tuple<Status, std::string, std::string> RtreeTableReader::NextKeyValue(uint64_t* offset)
@@ -138,8 +136,6 @@ std::tuple<Status, std::string, std::string> RtreeTableReader::NextKeyValue(uint
 
   std::string key = ReadFixedSlice(offset);
   std::string value = ReadFixedSlice(offset);
-
-  std::cout << "NextKeyValue: key value: " << key << ": " << value << std::endl;
 
   return std::make_tuple(Status::OK(), key, value);
 }
@@ -168,14 +164,11 @@ Status RtreeTableReader::Get(const ReadOptions& ro, const Slice& target,
       return status;
     }
     ParseInternalKey(Slice(key), &parsed_key);
-    std::cout << "Get: key value: " << parsed_key.user_key.ToString() << ": " << value << std::endl;
     if (parsed_key.user_key == parsed_target.user_key) {
-      std::cout << "Get: search key found: " << key << std::endl;
       if (!get_context->SaveValue(parsed_key, Slice(value))) {
         break;
       }
     } else {
-      std::cout << "Get: search key *not* found: " << key << std::endl;
     }
   }
   return Status::OK();
@@ -186,19 +179,23 @@ uint64_t RtreeTableReader::ApproximateOffsetOf(const Slice& key) {
 }
 
 RtreeTableIterator::RtreeTableIterator(RtreeTableReader* table)
-    : table_(table) {
-  std::cout << table_ << std::endl;
+    : table_(table),
+      offset_(0) {
+  // Make sure `key()` and `value()` point to valid data after the
+  // initialization, hence call `SeekToFirst()`
+  SeekToFirst();
 }
 
 RtreeTableIterator::~RtreeTableIterator() {
 }
 
 bool RtreeTableIterator::Valid() const {
-  return false;
+  return offset_ <= table_->DataSize();
 }
 
 void RtreeTableIterator::SeekToFirst() {
-// TODO vmx 2016-12-14: Do a table scan to find the value
+  offset_ = 0;
+  Next();
 }
 
 void RtreeTableIterator::SeekToLast() {
@@ -207,16 +204,12 @@ void RtreeTableIterator::SeekToLast() {
 }
 
 void RtreeTableIterator::Seek(const Slice& target) {
-// TODO vmx 2016-12-14: Do a table scan to find the value
-//  if (next_offset_ < table_->file_info_.data_end_offset) {
-//    for (Next(); status_.ok() && Valid(); Next()) {
-//      if (table_->internal_comparator_.Compare(key(), target) >= 0) {
-//        break;
-//      }
-//    }
-//  } else {
-//    offset_ = table_->file_info_.data_end_offset;
-//  }
+  offset_ = 0;
+  for (Next(); status_.ok() && Valid(); Next()) {
+    if (table_->internal_comparator_.Compare(key(), target) >= 0) {
+      break;
+    }
+  }
 }
 
 void RtreeTableIterator::SeekForPrev(const Slice& target) {
@@ -226,17 +219,27 @@ void RtreeTableIterator::SeekForPrev(const Slice& target) {
 }
 
 void RtreeTableIterator::Next() {
-// TODO vmx 2016-12-14: Do a table scan to find the value
-//  offset_ = next_offset_;
-//  if (offset_ < table_->file_info_.data_end_offset) {
-//    Slice tmp_slice;
-//    ParsedInternalKey parsed_key;
-//    status_ =
-//        table_->Next(&next_offset_, &parsed_key, &key_, &value_);
-//    if (!status_.ok()) {
-//      offset_ = next_offset_ = table_->file_info_.data_end_offset;
-//    }
-//  }
+  if (offset_ < table_->DataSize()) {
+    Slice tmp_slice;
+
+    Status status;
+    std::string key;
+    std::string value;
+    ParsedInternalKey parsed_key;
+
+    std::tie(status, key, value) = table_->NextKeyValue(&offset_);
+    if (!status.ok()) {
+      offset_ = table_->DataSize();
+    }
+    //ParseInternalKey(Slice(key), &parsed_key);
+    //key_ = parsed_key.user_key;
+    key_ = key;
+    value_ = value;
+  } else {
+    // A key is considered invalid if offset is greater than the data size,
+    // hence increase it
+    offset_++;
+  }
 }
 
 void RtreeTableIterator::Prev() {
@@ -245,12 +248,12 @@ void RtreeTableIterator::Prev() {
 
 Slice RtreeTableIterator::key() const {
   assert(Valid());
-  return key_;
+  return Slice(key_);
 }
 
 Slice RtreeTableIterator::value() const {
   assert(Valid());
-  return value_;
+  return Slice(value_);
 }
 
 Status RtreeTableIterator::status() const {

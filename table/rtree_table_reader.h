@@ -92,6 +92,10 @@ class RtreeTableReader: public TableReader {
 
   Status MmapDataIfNeeded();
 
+  uint64_t DataSize() const {
+    return table_properties_->data_size;
+  }
+
  private:
   const InternalKeyComparator internal_comparator_;
   // represents plain table's current status.

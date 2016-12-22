@@ -18,21 +18,26 @@ Status RtreeTableFactory::NewTableReader(
     uint64_t file_size,
     unique_ptr<TableReader>* table,
     bool prefetch_index_and_filter_in_cache) const {
-  return RtreeTableReader::Open(
-      table_reader_options.ioptions, table_reader_options.env_options,
-      table_reader_options.internal_comparator, std::move(file), file_size,
-      table);
+  std::unique_ptr<RtreeTableReader> new_reader(new RtreeTableReader(
+      table_reader_options.ioptions,
+      std::move(file),
+      table_reader_options.env_options,
+      table_reader_options.internal_comparator,
+      file_size));
+
+  Status status = new_reader->status();
+  if (status.ok()) {
+    *table = std::move(new_reader);
+  }
+
+  return status;
 }
 
 TableBuilder* RtreeTableFactory::NewTableBuilder(
     const TableBuilderOptions& table_builder_options, uint32_t column_family_id,
     WritableFileWriter* file) const {
-  // Ignore the skip_filters flag. PlainTable format is optimized for small
-  // in-memory dbs. The skip_filters optimization is not useful for plain
-  // tables
-  //
   return new RtreeTableBuilder(
-      table_builder_options.ioptions,
+      table_builder_options.ioptions, table_options_,
       table_builder_options.int_tbl_prop_collector_factories, column_family_id,
       file, table_builder_options.column_family_name);
 }
@@ -40,12 +45,13 @@ TableBuilder* RtreeTableFactory::NewTableBuilder(
 std::string RtreeTableFactory::GetPrintableTableOptions() const {
   std::string ret;
   ret.reserve(20000);
-  //const int kBufferSize = 200;
-  //char buffer[kBufferSize];
+  const int kBufferSize = 200;
+  char buffer[kBufferSize];
 
-  //snprintf(buffer, kBufferSize, "  store_index_in_file: %d\n",
-  //         table_options_.store_index_in_file);
-  //ret.append(buffer);
+  snprintf(buffer, kBufferSize, "  block_size: %" ROCKSDB_PRIszt "\n",
+           table_options_.block_size);
+  ret.append(buffer);
+
   return ret;
 }
 

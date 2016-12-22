@@ -61,35 +61,34 @@ RtreeTableReader::RtreeTableReader(const ImmutableCFOptions& ioptions,
                                    unique_ptr<RandomAccessFileReader>&& file,
                                    const EnvOptions& storage_options,
                                    const InternalKeyComparator& icomparator,
-                                   uint64_t file_size,
-                                   const TableProperties* table_properties)
+                                   uint64_t file_size)
     : internal_comparator_(icomparator),
       file_(std::move(file)),
       file_size_(file_size),
-      table_properties_(table_properties) {}
+      table_properties_(nullptr) {
+  Footer footer;
+  status_ = ReadFooterFromFile(file.get(),
+                               file_size,
+                               &footer,
+                               kRtreeTableMagicNumber);
+  if (!status_.ok()) {
+    return;
+  }
+  root_block_handle_ = footer.index_handle();
 
-RtreeTableReader::~RtreeTableReader() {
+  TableProperties* table_properties = nullptr;
+  status_ = ReadTableProperties(file.get(),
+                                file_size,
+                                kRtreeTableMagicNumber,
+                                ioptions,
+                                &table_properties);
+  if (!status_.ok()) {
+    return;
+  }
+  table_properties_.reset(table_properties);
 }
 
-Status RtreeTableReader::Open(const ImmutableCFOptions& ioptions,
-                              const EnvOptions& env_options,
-                              const InternalKeyComparator& internal_comparator,
-                              unique_ptr<RandomAccessFileReader>&& file,
-                              uint64_t file_size,
-                              unique_ptr<TableReader>* table_reader) {
-  TableProperties* props = nullptr;
-  auto s = ReadTableProperties(file.get(), file_size, kRtreeTableMagicNumber,
-                               ioptions, &props);
-  if (!s.ok()) {
-    return s;
-  }
-
-  std::unique_ptr<RtreeTableReader> new_reader(new RtreeTableReader(
-      ioptions, std::move(file), env_options, internal_comparator,
-      file_size, props));
-
-  *table_reader = std::move(new_reader);
-  return s;
+RtreeTableReader::~RtreeTableReader() {
 }
 
 void RtreeTableReader::SetupForCompaction() {

@@ -383,7 +383,13 @@ extern TableFactory* NewCuckooTableFactory(
 #endif  // ROCKSDB_LITE
 
 
-struct RtreeTableOptions {};
+struct RtreeTableOptions {
+  // Approximate size of user data packed per block.  Note that the
+  // block size specified here corresponds to uncompressed data.  The
+  // actual size of the unit read from disk may be smaller if
+  // compression is enabled.  This parameter can be changed dynamically.
+  size_t block_size = 4 * 1024;
+};
 extern TableFactory* NewRtreeTableFactory(const RtreeTableOptions& options = RtreeTableOptions());
 
 

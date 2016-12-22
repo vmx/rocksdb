@@ -20,17 +20,56 @@ namespace rocksdb {
 
 namespace {
 
-// a utility that helps writing block content to the file
-//   @block_handle the block handle this particular block.
-Status WriteBlock(const Slice& block_contents, WritableFileWriter* file,
-                  BlockHandle* block_handle) {
-  block_handle->set_offset(file->GetFileSize());
-  block_handle->set_size(block_contents.size());
-  Status s = file->Append(block_contents);
-  return s;
-}
 
 }  // namespace
+
+
+void RtreeLeafBuilder::Reset() {
+  buffer_.clear();
+  finished_ = false;
+}
+
+// The data within the block is:
+// key size | key | value size | value
+void RtreeLeafBuilder::Add(const Slice& key, const Slice& value) {
+  assert(!finished_);
+
+  // We need to store the internal key as that's expected for further
+  // operations within RocksDB
+  PutFixed64(&buffer_, key.size());
+  buffer_.append(key.data(), key.size());
+  PutFixed64(&buffer_, value.size());
+  buffer_.append(value.data(), value.size());
+}
+
+Slice RtreeLeafBuilder::Finish() {
+  finished_ = true;
+  return Slice(buffer_);
+}
+
+
+
+void RtreeInnerBuilder::Reset() {
+  buffer_.clear();
+  finished_ = false;
+}
+
+// The data within the block is:
+// key size | key | value size | value
+void RtreeInnerBuilder::Add(const BlockHandle& block_handle) {
+  assert(!finished_);
+
+  PutFixed64(&buffer_, block_handle.offset());
+  PutFixed64(&buffer_, block_handle.size());
+}
+
+Slice RtreeInnerBuilder::Finish() {
+  finished_ = true;
+  return Slice(buffer_);
+}
+
+
+
 
 // kRtreeTableMagicNumber was picked by running
 //    echo rocksdb.table.rtree | sha1sum
@@ -39,15 +78,15 @@ extern const uint64_t kRtreeTableMagicNumber = 0xf930fbe5f9f3a28full;
 
 RtreeTableBuilder::RtreeTableBuilder(
     const ImmutableCFOptions& ioptions,
+    const RtreeTableOptions& table_options,
     const std::vector<std::unique_ptr<IntTblPropCollectorFactory>>*
         int_tbl_prop_collector_factories,
     uint32_t column_family_id, WritableFileWriter* file,
     const std::string& column_family_name)
     : ioptions_(ioptions),
-      file_(file) {
-  // for the rtree table, we put all the data in a big chuck.
-  properties_.num_data_blocks = 1;
-
+      file_(file),
+      table_options_(table_options) {
+  properties_.num_data_blocks = 0;
   properties_.column_family_id = column_family_id;
   properties_.column_family_name = column_family_name;
 
@@ -71,16 +110,15 @@ void RtreeTableBuilder::Add(const Slice& key, const Slice& value) {
     return;
   }
 
-  // The WritableFile expects a slice. Hence we prepare a slice of the form
-  // key size | key | value size | value
-  std::string key_value;
-  // We need to store the internal key as that's expected for further
-  // operations within RocksDB
-  PutFixed64(&key_value, key.size());
-  key_value.append(key.data(), key.size());
-  PutFixed64(&key_value, value.size());
-  key_value.append(value.data(), value.size());
-  file_->Append(key_value);
+  // We don't use a `FlushBlockPolicy` here as it expects a block in the
+  // BlockBulder format. Our blocks are different. Also there's currently
+  // only a single implementation that is based on the size of the block,
+  // we can do this without all the abstraction.
+  if (data_block_.Size() >= table_options_.block_size) {
+    Flush();
+  }
+
+  data_block_.Add(key, value);
 
   properties_.num_entries++;
   properties_.raw_key_size += key.size();
@@ -98,6 +136,21 @@ Status RtreeTableBuilder::Finish() {
   assert(!closed_);
   closed_ = true;
 
+  // The last block is probably not flushed ot the file yet
+  Status status = Flush();
+  if (!status.ok()) {
+    return status;
+  }
+
+  // Store the parent level (the pointers to the data blocks) after the
+  // data blocks
+  BlockHandle parents_block_handle;
+  status = WriteBlock(parents_block_.Finish(), file_, &parents_block_handle);
+  if (!status.ok()) {
+    return status;
+  }
+
+  // The data size includes the parent nodes
   properties_.data_size = FileSize();
 
   //  Write the following blocks
@@ -121,37 +174,38 @@ Status RtreeTableBuilder::Finish() {
 
   // -- Write property block
   BlockHandle property_block_handle;
-  auto s = WriteBlock(
+  status = WriteBlock(
       property_block_builder.Finish(),
       file_,
       &property_block_handle
   );
-  if (!s.ok()) {
-    return s;
+  if (!status.ok()) {
+    return status;
   }
   meta_index_builer.Add(kPropertiesBlock, property_block_handle);
 
   // -- write metaindex block
   BlockHandle metaindex_block_handle;
-  s = WriteBlock(
+  status = WriteBlock(
       meta_index_builer.Finish(),
       file_,
       &metaindex_block_handle
   );
-  if (!s.ok()) {
-    return s;
+  if (!status.ok()) {
+    return status;
   }
 
   // Write Footer
   // no need to write out new footer if we're using default checksum
   Footer footer(kRtreeTableMagicNumber, 0);
   footer.set_metaindex_handle(metaindex_block_handle);
-  footer.set_index_handle(BlockHandle::NullBlockHandle());
+  // We use the index handle as entry point to the data structure
+  footer.set_index_handle(parents_block_handle);
   std::string footer_encoding;
   footer.EncodeTo(&footer_encoding);
-  s = file_->Append(footer_encoding);
+  status = file_->Append(footer_encoding);
 
-  return s;
+  return status;
 }
 
 void RtreeTableBuilder::Abandon() {
@@ -165,5 +219,40 @@ uint64_t RtreeTableBuilder::NumEntries() const {
 uint64_t RtreeTableBuilder::FileSize() const {
   return file_->GetFileSize();
 }
+
+Status RtreeTableBuilder::Flush() {
+  if (!data_block_.empty()) {
+    BlockHandle data_block_handle;
+
+    std::string compressed;
+    Slice data = data_block_.Finish();
+    Snappy_Compress(CompressionOptions(),
+                    data.data(),
+                    data.size(),
+                    &compressed);
+
+    Status status = WriteBlock(compressed, file_, &data_block_handle);
+    if (!status.ok()) {
+      return status;
+    }
+    data_block_.Reset();
+    parents_block_.Add(data_block_handle);
+    properties_.num_data_blocks++;
+  }
+  return Status::OK();
+}
+
+// Writes a slice to disk. If it should be compressed, then the already
+// compressed data needs to be passed into this method.
+//   @block_handle the block handle this particular block.
+Status RtreeTableBuilder::WriteBlock(const Slice& block_contents, WritableFileWriter* file,
+                                     BlockHandle* block_handle) {
+  block_handle->set_offset(file->GetFileSize());
+  block_handle->set_size(block_contents.size());
+  Status s = file->Append(block_contents);
+  return s;
+}
+
+
 
 }  // namespace rocksdb

@@ -16,6 +16,7 @@
 #include "rocksdb/slice.h"            // for Slice
 #include "rocksdb/status.h"           // for Status
 #include "rocksdb/env.h"              // for EnvOptions
+#include "table/format.h"             // for BlockHandle
 #include "table/table_reader.h"       // for TableReader
 #include "util/arena.h"               // for Arena
 #include "util/file_reader_writer.h"  // for RandomAccessFileReade
@@ -55,16 +56,12 @@ struct RtreeTableReaderFileInfo {
 // The implementation of IndexedTableReader requires output file is mmaped
 class RtreeTableReader: public TableReader {
  public:
-  static Status Open(const ImmutableCFOptions& ioptions,
-                     const EnvOptions& env_options,
-                     const InternalKeyComparator& internal_comparator,
-                     unique_ptr<RandomAccessFileReader>&& file,
-                     uint64_t file_size, unique_ptr<TableReader>* table);
-
   InternalIterator* NewIterator(const ReadOptions&, Arena* arena = nullptr,
                                 bool skip_filters = false) override;
 
   void Prepare(const Slice& target) override;
+
+  Status status() const { return status_; }
 
   Status Get(const ReadOptions&, const Slice& key, GetContext* get_context,
              bool skip_filters = false) override;
@@ -85,8 +82,7 @@ class RtreeTableReader: public TableReader {
                    unique_ptr<RandomAccessFileReader>&& file,
                    const EnvOptions& env_options,
                    const InternalKeyComparator& internal_comparator,
-                   uint64_t file_size,
-                   const TableProperties* table_properties);
+                   uint64_t file_size);
   virtual ~RtreeTableReader();
 
   Status MmapDataIfNeeded();
@@ -108,7 +104,9 @@ class RtreeTableReader: public TableReader {
 
   unique_ptr<RandomAccessFileReader> file_;
   uint64_t file_size_;
+  //TableProperties table_properties_;
   std::shared_ptr<const TableProperties> table_properties_;
+  BlockHandle root_block_handle_;
 
   friend class RtreeTableIterator;
 

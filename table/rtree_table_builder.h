@@ -15,10 +15,93 @@
 
 namespace rocksdb {
 
-class BlockBuilder;
 class BlockHandle;
 class WritableFile;
 class TableBuilder;
+
+// This is a simplified version of the `BlockBuilder`
+class RtreeLeafBuilder {
+ public:
+  //RtreeLeafBuilder(const RtreeBlockBuilder&) = delete;
+  //RtreeLeafBuilder& operator=(const RtreeBlockBuilder&) = delete;
+
+  RtreeLeafBuilder();
+  //~RtreeLeafBuilder();
+
+  // Reset the contents as if the BlockBuilder was just constructed.
+  void Reset();
+
+  // REQUIRES: Finish() has not been called since the last call to Reset().
+  // REQUIRES: key is larger than any previously added key
+  void Add(const Slice& key, const Slice& value);
+
+  // Finish building the block and return a slice that refers to the
+  // block contents.  The returned slice will remain valid for the
+  // lifetime of this builder or until Reset() is called.
+  Slice Finish();
+
+  // The current size of the buffer
+  size_t Size() const {
+    return buffer_.size();
+  };
+
+  // Return true iff no entries have been added since the last Reset()
+  bool empty() const {
+    return buffer_.empty();
+  }
+
+ private:
+  std::string buffer_;
+  // Has Finish() been called?
+  bool finished_;
+
+  // No copying allowed
+  RtreeLeafBuilder(const RtreeLeafBuilder&) = delete;
+  void operator=(const RtreeLeafBuilder&) = delete;
+};
+
+
+// This is a simplified version of the `BlockBuilder`
+class RtreeInnerBuilder {
+ public:
+  //RtreeInnerBuilder(const RtreeBlockBuilder&) = delete;
+  //RtreeInnerBuilder& operator=(const RtreeBlockBuilder&) = delete;
+
+  RtreeInnerBuilder();
+  //~RtreeInnerBuilder();
+
+  // Reset the contents as if the BlockBuilder was just constructed.
+  void Reset();
+
+  // REQUIRES: Finish() has not been called since the last call to Reset().
+  // REQUIRES: key is larger than any previously added key
+  void Add(const BlockHandle& block_handle);
+
+  // Finish building the block and return a slice that refers to the
+  // block contents.  The returned slice will remain valid for the
+  // lifetime of this builder or until Reset() is called.
+  Slice Finish();
+
+  // The current size of the buffer
+  size_t Size() const {
+    return buffer_.size();
+  };
+
+  // Return true iff no entries have been added since the last Reset()
+  bool empty() const {
+    return buffer_.empty();
+  }
+
+ private:
+  std::string buffer_;
+  // Has Finish() been called?
+  bool finished_;
+
+  // No copying allowed
+  RtreeInnerBuilder(const RtreeInnerBuilder&) = delete;
+  void operator=(const RtreeInnerBuilder&) = delete;
+};
+
 
 class RtreeTableBuilder: public TableBuilder {
  public:
@@ -29,6 +112,7 @@ class RtreeTableBuilder: public TableBuilder {
   // that the caller does not know which level the output file will reside.
   RtreeTableBuilder(
       const ImmutableCFOptions& ioptions,
+      const RtreeTableOptions& table_options,
       const std::vector<std::unique_ptr<IntTblPropCollectorFactory>>*
           int_tbl_prop_collector_factories,
       uint32_t column_family_id, WritableFileWriter* file,
@@ -67,6 +151,11 @@ class RtreeTableBuilder: public TableBuilder {
   TableProperties GetTableProperties() const override { return properties_; }
 
  private:
+  Status Flush();
+
+  Status WriteBlock(const Slice& block_contents, WritableFileWriter* file,
+                    BlockHandle* block_handle);
+
   Arena arena_;
   const ImmutableCFOptions& ioptions_;
   std::vector<std::unique_ptr<IntTblPropCollector>>
@@ -77,6 +166,10 @@ class RtreeTableBuilder: public TableBuilder {
   TableProperties properties_;
 
   bool closed_ = false;  // Either Finish() or Abandon() has been called.
+
+  const RtreeTableOptions table_options_;
+  RtreeLeafBuilder data_block_;
+  RtreeInnerBuilder parents_block_;
 
   // No copying allowed
   RtreeTableBuilder(const RtreeTableBuilder&) = delete;

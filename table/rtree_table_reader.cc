@@ -143,31 +143,18 @@ void RtreeTableReader::Prepare(const Slice& target) {
 
 Status RtreeTableReader::Get(const ReadOptions& ro, const Slice& target,
                              GetContext* get_context, bool skip_filters) {
-  size_t offset = 0;
-
-  Slice found_key;
-  ParsedInternalKey parsed_target;
-  if (!ParseInternalKey(target, &parsed_target)) {
-    return Status::Corruption(Slice());
+  InternalIterator* iter = new RtreeTableIterator(this);
+  iter->Seek(target);
+  if (!iter->status().ok()) {
+    return iter->status();
   }
-  Slice found_value;
-  while (offset < file_size_) {
-    Status status;
-    std::string key;
-    std::string value;
-    ParsedInternalKey parsed_key;
 
-    std::tie(status, key, value) = NextKeyValue(&offset);
-    if (!status.ok()) {
-      return status;
-    }
-    ParseInternalKey(Slice(key), &parsed_key);
-    if (parsed_key.user_key == parsed_target.user_key) {
-      if (!get_context->SaveValue(parsed_key, Slice(value))) {
-        break;
-      }
-    } else {
-    }
+  // The key found by `Seek()` might be bigger than the target, hence check
+  // for equality
+  ParsedInternalKey parsed_key;
+  ParseInternalKey(iter->key(), &parsed_key);
+  if (parsed_key.user_key.compare(ExtractUserKey(target)) == 0) {
+    get_context->SaveValue(parsed_key, iter->value());
   }
   return Status::OK();
 }

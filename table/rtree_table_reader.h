@@ -110,6 +110,10 @@ class RtreeTableReader: public TableReader {
 
   friend class RtreeTableIterator;
 
+  // Returns the leaf (uncompressed) from the offset and advances the offset
+  // to point to the next one
+  std::string NextLeaf(size_t* offset);
+
   // Read the key and value at `offset` to parameters for keys, the and
   // `seekable`.
   // On success, `offset` will be updated as the offset for the next key.
@@ -125,10 +129,6 @@ class RtreeTableReader: public TableReader {
   // It will also advance the offset to the next slice
   //Status ReadFixedSlice(uint64_t* offset, Slice* slice) const;
   std::string ReadFixedSlice(uint64_t* offset) const;
-
-  // Get the next key value pair. Advance the offset to the next one.
-  std::tuple<Status, std::string, std::string> NextKeyValue(uint64_t* offset) const;
-
 
   // No copying allowed
   explicit RtreeTableReader(const TableReader&) = delete;

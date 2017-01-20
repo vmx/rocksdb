@@ -23,6 +23,9 @@ namespace {
 
 }  // namespace
 
+RtreeLeafBuilder::RtreeLeafBuilder()
+    : buffer_(""),
+      finished_(false) {}
 
 void RtreeLeafBuilder::Reset() {
   buffer_.clear();
@@ -36,10 +39,8 @@ void RtreeLeafBuilder::Add(const Slice& key, const Slice& value) {
 
   // We need to store the internal key as that's expected for further
   // operations within RocksDB
-  PutFixed64(&buffer_, key.size());
-  buffer_.append(key.data(), key.size());
-  PutFixed64(&buffer_, value.size());
-  buffer_.append(value.data(), value.size());
+  PutLengthPrefixedSlice(&buffer_, key);
+  PutLengthPrefixedSlice(&buffer_, value);
 }
 
 Slice RtreeLeafBuilder::Finish() {
@@ -48,14 +49,17 @@ Slice RtreeLeafBuilder::Finish() {
 }
 
 
+RtreeInnerBuilder::RtreeInnerBuilder()
+    : buffer_(""),
+      finished_(false) {}
 
 void RtreeInnerBuilder::Reset() {
   buffer_.clear();
   finished_ = false;
 }
 
-// The data within the block is:
-// key size | key | value size | value
+// The data within the block is a list of handles:
+// data offset | data size | ...
 void RtreeInnerBuilder::Add(const BlockHandle& block_handle) {
   assert(!finished_);
 
@@ -141,11 +145,13 @@ Status RtreeTableBuilder::Finish() {
   if (!status.ok()) {
     return status;
   }
+  data_block_.Reset();
 
   // Store the parent level (the pointers to the data blocks) after the
   // data blocks
   BlockHandle parents_block_handle;
   status = WriteBlock(parents_block_.Finish(), file_, &parents_block_handle);
+  parents_block_.Reset();
   if (!status.ok()) {
     return status;
   }

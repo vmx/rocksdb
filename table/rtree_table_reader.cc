@@ -47,9 +47,14 @@ class RtreeTableIterator : public InternalIterator {
 
  private:
   RtreeTableReader* table_;
+  // The offset off within the inner node (there currently is one only)
+  uint64_t parent_offset_;
+  // An uncompressed leaf node
+  std::string leaf_;
+  // The offset within a uncompressed leaf
   uint64_t offset_;
-  std::string key_;
-  std::string value_;
+  Slice key_;
+  Slice value_;
   Status status_;
   // No copying allowed
   RtreeTableIterator(const RtreeTableIterator&) = delete;
@@ -67,7 +72,7 @@ RtreeTableReader::RtreeTableReader(const ImmutableCFOptions& ioptions,
       file_size_(file_size),
       table_properties_(nullptr) {
   Footer footer;
-  status_ = ReadFooterFromFile(file.get(),
+  status_ = ReadFooterFromFile(file_.get(),
                                file_size,
                                &footer,
                                kRtreeTableMagicNumber);
@@ -77,7 +82,7 @@ RtreeTableReader::RtreeTableReader(const ImmutableCFOptions& ioptions,
   root_block_handle_ = footer.index_handle();
 
   TableProperties* table_properties = nullptr;
-  status_ = ReadTableProperties(file.get(),
+  status_ = ReadTableProperties(file_.get(),
                                 file_size,
                                 kRtreeTableMagicNumber,
                                 ioptions,
@@ -124,17 +129,51 @@ std::string RtreeTableReader::ReadFixedSlice(uint64_t* offset) const {
   return std::string(slice.data(), slice.size());
 }
 
-std::tuple<Status, std::string, std::string> RtreeTableReader::NextKeyValue(uint64_t* offset)
-    const {
-  if (*offset >= table_properties_->data_size) {
-    return std::make_tuple(
-        Status::Corruption("There is no further key-value pair"), "", "");
+// TODO vmx 2017-01-18: Return status
+std::string RtreeTableReader::NextLeaf(size_t* offset) {
+  if (*offset >= root_block_handle_.size()) {
+    return "";
   }
 
-  std::string key = ReadFixedSlice(offset);
-  std::string value = ReadFixedSlice(offset);
+  Slice uint64_slice;
+  char uint64_buf[sizeof(uint64_t)];
 
-  return std::make_tuple(Status::OK(), key, value);
+  uint64_t leaf_offset = 0;
+  Status status = file_->Read(
+      root_block_handle_.offset() + *offset,
+      sizeof(uint64_t), &uint64_slice, uint64_buf);
+  GetFixed64(&uint64_slice, &leaf_offset);
+  *offset += sizeof(uint64_t);
+
+  uint64_t leaf_size = 0;
+  status = file_->Read(
+      root_block_handle_.offset() + *offset,
+      sizeof(uint64_t), &uint64_slice, uint64_buf);
+  GetFixed64(&uint64_slice, &leaf_size);
+  *offset += sizeof(uint64_t);
+
+  Slice leaf_compressed;
+  std::string slice_buf;
+  slice_buf.reserve(leaf_size);
+  status = file_->Read(leaf_offset, leaf_size, &leaf_compressed,
+                       const_cast<char *>(slice_buf.c_str()));
+
+  size_t ulength = 0;
+  static char snappy_corrupt_msg[] =
+        "Corrupted Snappy compressed block contents";
+  if (!Snappy_GetUncompressedLength(leaf_compressed.data(),
+                                    leaf_compressed.size(),
+                                    &ulength)) {
+    status = Status::Corruption(snappy_corrupt_msg);
+  }
+  std::unique_ptr<char[]> ubuf;
+  ubuf.reset(new char[ulength]);
+  if (!Snappy_Uncompress(leaf_compressed.data(),
+                         leaf_compressed.size(),
+                         ubuf.get())) {
+    status = Status::Corruption(snappy_corrupt_msg);
+  }
+  return std::string(ubuf.get(), ulength);
 }
 
 void RtreeTableReader::Prepare(const Slice& target) {
@@ -164,21 +203,24 @@ uint64_t RtreeTableReader::ApproximateOffsetOf(const Slice& key) {
 
 RtreeTableIterator::RtreeTableIterator(RtreeTableReader* table)
     : table_(table),
-      // When an interator is initialized, a call to `Valid()` must return
-      // false (according to the tests). Hence set the `offset_` to a value
-      // bigger than the data size.
-      offset_(table_->DataSize() + 1) {
+      parent_offset_(0),
+      leaf_(""),
+      offset_(0) {
 }
 
 RtreeTableIterator::~RtreeTableIterator() {
 }
 
 bool RtreeTableIterator::Valid() const {
-  return offset_ <= table_->DataSize();
+  return !leaf_.empty() && offset_ <= leaf_.size();
 }
 
 void RtreeTableIterator::SeekToFirst() {
+  // TODO vmx 2017-01-20: Add a `reset()` method which resets the offsets
+  // and buffers
+  parent_offset_ = 0;
   offset_ = 0;
+  leaf_.clear();
   Next();
 }
 
@@ -188,7 +230,11 @@ void RtreeTableIterator::SeekToLast() {
 }
 
 void RtreeTableIterator::Seek(const Slice& target) {
+  // TODO vmx 2017-01-20: Add a `reset()` method which resets the offsets
+  // and buffers
+  parent_offset_ = 0;
   offset_ = 0;
+  leaf_.clear();
   for (Next(); status_.ok() && Valid(); Next()) {
     if (table_->internal_comparator_.Compare(key(), target) >= 0) {
       break;
@@ -203,26 +249,19 @@ void RtreeTableIterator::SeekForPrev(const Slice& target) {
 }
 
 void RtreeTableIterator::Next() {
-  if (offset_ < table_->DataSize()) {
-    Slice tmp_slice;
-
-    Status status;
-    std::string key;
-    std::string value;
-    ParsedInternalKey parsed_key;
-
-    std::tie(status, key, value) = table_->NextKeyValue(&offset_);
-    if (!status.ok()) {
-      offset_ = table_->DataSize();
-    }
-    //ParseInternalKey(Slice(key), &parsed_key);
-    //key_ = parsed_key.user_key;
-    key_ = key;
-    value_ = value;
+  if (!leaf_.empty() && offset_ < leaf_.size()) {
+    key_ = GetLengthPrefixedSlice(leaf_.data() + offset_);
+    offset_ = key_.data() - leaf_.data() + key_.size();
+    value_ = GetLengthPrefixedSlice(leaf_.data() + offset_);
+    offset_ = value_.data() - leaf_.data() + value_.size();
   } else {
-    // A key is considered invalid if offset is greater than the data size,
-    // hence increase it
-    offset_++;
+    // If there is no next leaf, it will return an empty string and hence
+    // `Valid()` will be false
+    leaf_ = table_->NextLeaf(&parent_offset_);
+    offset_ = 0;
+    if (!leaf_.empty()) {
+      Next();
+    }
   }
 }
 
@@ -232,12 +271,12 @@ void RtreeTableIterator::Prev() {
 
 Slice RtreeTableIterator::key() const {
   assert(Valid());
-  return Slice(key_);
+  return key_;
 }
 
 Slice RtreeTableIterator::value() const {
   assert(Valid());
-  return Slice(value_);
+  return value_;
 }
 
 Status RtreeTableIterator::status() const {

@@ -40,6 +40,9 @@ class RtreeLeafBuilder {
   // lifetime of this builder or until Reset() is called.
   Slice Finish();
 
+  // Returns the last key that was stored
+  Slice LastKey();
+
   // The current size of the buffer
   size_t Size() const {
     return buffer_.size();
@@ -54,6 +57,10 @@ class RtreeLeafBuilder {
   std::string buffer_;
   // Has Finish() been called?
   bool finished_;
+
+  // Offset within the `buffer_` where the last key is stored.
+  // This is needed for the parent node.
+  size_t last_key_offset_;
 
   // No copying allowed
   RtreeLeafBuilder(const RtreeLeafBuilder&) = delete;
@@ -75,7 +82,8 @@ class RtreeInnerBuilder {
 
   // REQUIRES: Finish() has not been called since the last call to Reset().
   // REQUIRES: key is larger than any previously added key
-  void Add(const BlockHandle& block_handle);
+  void Add(const Slice& key,
+           const BlockHandle& block_handle);
 
   // Finish building the block and return a slice that refers to the
   // block contents.  The returned slice will remain valid for the

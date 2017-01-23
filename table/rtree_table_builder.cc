@@ -25,7 +25,8 @@ namespace {
 
 RtreeLeafBuilder::RtreeLeafBuilder()
     : buffer_(""),
-      finished_(false) {}
+      finished_(false),
+      last_key_offset_(0) {}
 
 void RtreeLeafBuilder::Reset() {
   buffer_.clear();
@@ -37,6 +38,8 @@ void RtreeLeafBuilder::Reset() {
 void RtreeLeafBuilder::Add(const Slice& key, const Slice& value) {
   assert(!finished_);
 
+  last_key_offset_ = buffer_.size();
+
   // We need to store the internal key as that's expected for further
   // operations within RocksDB
   PutLengthPrefixedSlice(&buffer_, key);
@@ -46,6 +49,10 @@ void RtreeLeafBuilder::Add(const Slice& key, const Slice& value) {
 Slice RtreeLeafBuilder::Finish() {
   finished_ = true;
   return Slice(buffer_);
+}
+
+Slice RtreeLeafBuilder::LastKey() {
+  return GetLengthPrefixedSlice(buffer_.data() + last_key_offset_);
 }
 
 
@@ -60,9 +67,11 @@ void RtreeInnerBuilder::Reset() {
 
 // The data within the block is a list of handles:
 // data offset | data size | ...
-void RtreeInnerBuilder::Add(const BlockHandle& block_handle) {
+void RtreeInnerBuilder::Add(const Slice& key,
+                            const BlockHandle& block_handle) {
   assert(!finished_);
 
+  PutLengthPrefixedSlice(&buffer_, key);
   PutFixed64(&buffer_, block_handle.offset());
   PutFixed64(&buffer_, block_handle.size());
 }
@@ -241,8 +250,8 @@ Status RtreeTableBuilder::Flush() {
     if (!status.ok()) {
       return status;
     }
+    parents_block_.Add(data_block_.LastKey(), data_block_handle);
     data_block_.Reset();
-    parents_block_.Add(data_block_handle);
     properties_.num_data_blocks++;
   }
   return Status::OK();

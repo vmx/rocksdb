@@ -112,7 +112,7 @@ class RtreeTableReader: public TableReader {
 
   // Returns the leaf (uncompressed) from the offset and advances the offset
   // to point to the next one
-  std::string NextLeaf(size_t* offset);
+  std::string NextLeaf(size_t* offset, Slice target);
 
   // Read the key and value at `offset` to parameters for keys, the and
   // `seekable`.

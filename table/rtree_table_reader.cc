@@ -19,6 +19,8 @@
 
 namespace rocksdb {
 
+const uint8_t kMaxVarint32Length = 6u;
+
 // Iterator to iterate IndexedTable
 class RtreeTableIterator : public InternalIterator {
  public:
@@ -56,6 +58,14 @@ class RtreeTableIterator : public InternalIterator {
   Slice key_;
   Slice value_;
   Status status_;
+  // A call to`Seek()` specifie the bounding box we want to query on, hence
+  // store that value within the iterator
+  // NOTE vmx 2017-01-23: It would be nicer if this could be Slice, but
+  // for a reason I know, this won't work as the memory will get changed
+  // somehow.
+  std::string target_;
+
+
   // No copying allowed
   RtreeTableIterator(const RtreeTableIterator&) = delete;
   void operator=(const Iterator&) = delete;
@@ -130,16 +140,50 @@ std::string RtreeTableReader::ReadFixedSlice(uint64_t* offset) const {
 }
 
 // TODO vmx 2017-01-18: Return status
-std::string RtreeTableReader::NextLeaf(size_t* offset) {
+std::string RtreeTableReader::NextLeaf(size_t* offset, Slice target) {
   if (*offset >= root_block_handle_.size()) {
     return "";
   }
 
+  // Read the key
+
+  Slice varint32_slice;
+  char varint32_buf[kMaxVarint32Length];
+  uint32_t key_size;
+  Status status = file_->Read(root_block_handle_.offset() + *offset,
+                              kMaxVarint32Length,
+                              &varint32_slice,
+                              varint32_buf);
+  GetVarint32(&varint32_slice, &key_size);
+  // `GetVarint32()` advances the slice after the varint, hence its new size
+  // can be used to determine the actual varint size
+  *offset += kMaxVarint32Length - varint32_slice.size();
+
+  Slice key;
+  std::string slice_buf;
+  slice_buf.reserve(key_size);
+  status = file_->Read(root_block_handle_.offset() + *offset,
+                       key_size,
+                       &key,
+                       const_cast<char *>(slice_buf.data()));
+  *offset += key.size();
+
+  // If the key we are looking for (`target`) is bigger than the last key
+  // of the block, then this block can't be a match and we try the next one.
+  // If no target is given, just iterate over eerything
+  if (!target.empty() && internal_comparator_.Compare(key, target) < 0) {
+    // The key is followed by a handle, which is stored as a 64-bit offset
+    // and 64-bit size.
+    *offset += 2 * sizeof(uint64_t);
+    return NextLeaf(offset, target);
+  }
+
+  // Read the handle information (pointer to the leaf node)
+
   Slice uint64_slice;
   char uint64_buf[sizeof(uint64_t)];
-
   uint64_t leaf_offset = 0;
-  Status status = file_->Read(
+  status = file_->Read(
       root_block_handle_.offset() + *offset,
       sizeof(uint64_t), &uint64_slice, uint64_buf);
   GetFixed64(&uint64_slice, &leaf_offset);
@@ -152,8 +196,9 @@ std::string RtreeTableReader::NextLeaf(size_t* offset) {
   GetFixed64(&uint64_slice, &leaf_size);
   *offset += sizeof(uint64_t);
 
+  // Read the leaf
+
   Slice leaf_compressed;
-  std::string slice_buf;
   slice_buf.reserve(leaf_size);
   status = file_->Read(leaf_offset, leaf_size, &leaf_compressed,
                        const_cast<char *>(slice_buf.c_str()));
@@ -205,7 +250,8 @@ RtreeTableIterator::RtreeTableIterator(RtreeTableReader* table)
     : table_(table),
       parent_offset_(0),
       leaf_(""),
-      offset_(0) {
+      offset_(0),
+      target_("") {
 }
 
 RtreeTableIterator::~RtreeTableIterator() {
@@ -221,6 +267,8 @@ void RtreeTableIterator::SeekToFirst() {
   parent_offset_ = 0;
   offset_ = 0;
   leaf_.clear();
+  target_ = "";
+
   Next();
 }
 
@@ -235,6 +283,8 @@ void RtreeTableIterator::Seek(const Slice& target) {
   parent_offset_ = 0;
   offset_ = 0;
   leaf_.clear();
+
+  target_ = std::string(target.data(), target.size());
   for (Next(); status_.ok() && Valid(); Next()) {
     if (table_->internal_comparator_.Compare(key(), target) >= 0) {
       break;
@@ -257,7 +307,7 @@ void RtreeTableIterator::Next() {
   } else {
     // If there is no next leaf, it will return an empty string and hence
     // `Valid()` will be false
-    leaf_ = table_->NextLeaf(&parent_offset_);
+    leaf_ = table_->NextLeaf(&parent_offset_, Slice(target_));
     offset_ = 0;
     if (!leaf_.empty()) {
       Next();

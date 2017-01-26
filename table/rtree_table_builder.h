@@ -164,6 +164,14 @@ class RtreeTableBuilder: public TableBuilder {
   Status WriteBlock(const Slice& block_contents, WritableFileWriter* file,
                     BlockHandle* block_handle);
 
+  Status WriteBlockCompressed(const Slice& block_contents,
+                              WritableFileWriter* file,
+                              BlockHandle* block_handle);
+
+  // Sets the block_handle to the root node
+  Status BuildTree(const Slice& block_contents, WritableFileWriter* file,
+                   BlockHandle* block_handle);
+
   Arena arena_;
   const ImmutableCFOptions& ioptions_;
   std::vector<std::unique_ptr<IntTblPropCollector>>

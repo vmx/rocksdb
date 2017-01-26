@@ -156,17 +156,17 @@ Status RtreeTableBuilder::Finish() {
   }
   data_block_.Reset();
 
+  // The data size is the key-values without the index structure
+  properties_.data_size = FileSize();
+
   // Store the parent level (the pointers to the data blocks) after the
   // data blocks
   BlockHandle parents_block_handle;
-  status = WriteBlock(parents_block_.Finish(), file_, &parents_block_handle);
+  status = BuildTree(parents_block_.Finish(), file_, &parents_block_handle);
   parents_block_.Reset();
   if (!status.ok()) {
     return status;
   }
-
-  // The data size includes the parent nodes
-  properties_.data_size = FileSize();
 
   //  Write the following blocks
   //  1. [meta block: properties]
@@ -268,6 +268,62 @@ Status RtreeTableBuilder::WriteBlock(const Slice& block_contents, WritableFileWr
   return s;
 }
 
+Status RtreeTableBuilder::WriteBlockCompressed(const Slice& block_contents,
+                                               WritableFileWriter* file,
+                                               BlockHandle* block_handle) {
+  std::string compressed;
+  Snappy_Compress(CompressionOptions(),
+                  block_contents.data(),
+                  block_contents.size(),
+                  &compressed);
+  return WriteBlock(Slice(compressed), file_, block_handle);
+}
 
+// NOTE vmx 2017-01-24: Build the tree bottom up. It could be done in a
+// less memory-hungy way, but it should be good for now.
+Status RtreeTableBuilder::BuildTree(const Slice& block_contents,
+                                    WritableFileWriter* file,
+                                    BlockHandle* block_handle) {
+  std::string parents;
+  // The key that just got read
+  Slice key;
+  // Create a non const version of the slice
+  Slice contents = Slice(block_contents);
+  // The offset before the last compression
+  const char* prev_offset = contents.data();
+  Status status;
+  // The current accumulated block size
+  size_t data_size = 0;
+
+  while(contents.size() > 0) {
+    GetLengthPrefixedSlice(&contents, &key);
+    // Advance for the block handle offset and size
+    contents.remove_prefix(2 * sizeof(uint64_t));
+
+    data_size = contents.data() - prev_offset;
+    // Write block if a certain threshold is reached (4KB by default)
+    // or when there's is some left-over
+    if (data_size >= table_options_.block_size || contents.size() == 0) {
+      BlockHandle data_block_handle;
+      //status = WriteBlock(compressed, file_, &data_block_handle);
+      status = WriteBlockCompressed(Slice(prev_offset, data_size),
+                                    file_,
+                                    &data_block_handle);
+      if (!status.ok()) {
+        return status;
+      }
+
+      // Add the key and the handle to the parents' level
+      PutLengthPrefixedSlice(&parents, key);
+      PutFixed64(&parents, data_block_handle.offset());
+      PutFixed64(&parents, data_block_handle.size());
+
+      prev_offset = contents.data();
+    }
+  }
+
+  status = WriteBlockCompressed(Slice(parents), file_, block_handle);
+  return status;
+}
 
 }  // namespace rocksdb

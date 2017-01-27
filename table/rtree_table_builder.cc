@@ -159,8 +159,7 @@ Status RtreeTableBuilder::Finish() {
   // The data size is the key-values without the index structure
   properties_.data_size = FileSize();
 
-  // Store the parent level (the pointers to the data blocks) after the
-  // data blocks
+  // Store the index tree after the data blocks
   BlockHandle parents_block_handle;
   status = BuildTree(parents_block_.Finish(), file_, &parents_block_handle);
   parents_block_.Reset();
@@ -294,6 +293,8 @@ Status RtreeTableBuilder::BuildTree(const Slice& block_contents,
   Status status;
   // The current accumulated block size
   size_t data_size = 0;
+  // Have a temproary string we can use as a storage for a Slice
+  std::string tmp_contents;
 
   while(contents.size() > 0) {
     GetLengthPrefixedSlice(&contents, &key);
@@ -301,28 +302,43 @@ Status RtreeTableBuilder::BuildTree(const Slice& block_contents,
     contents.remove_prefix(2 * sizeof(uint64_t));
 
     data_size = contents.data() - prev_offset;
-    // Write block if a certain threshold is reached (4KB by default)
-    // or when there's is some left-over
+    // Write block if a certain threshold is reached (4KB by default) or
+    // when there's is some left-over
     if (data_size >= table_options_.block_size || contents.size() == 0) {
-      BlockHandle data_block_handle;
-      //status = WriteBlock(compressed, file_, &data_block_handle);
       status = WriteBlockCompressed(Slice(prev_offset, data_size),
                                     file_,
-                                    &data_block_handle);
+                                    block_handle);
       if (!status.ok()) {
         return status;
       }
 
+      // There is only one parent node, i.e. we've reached the root node
+      if (contents.size() == 0 && parents.empty()) {
+        return Status::OK();
+      }
+
       // Add the key and the handle to the parents' level
       PutLengthPrefixedSlice(&parents, key);
-      PutFixed64(&parents, data_block_handle.offset());
-      PutFixed64(&parents, data_block_handle.size());
+      PutFixed64(&parents, block_handle->offset());
+      PutFixed64(&parents, block_handle->size());
 
       prev_offset = contents.data();
     }
+
+    // All nodes of the current level got processed, now store the parent
+    // level if there is one
+    if (contents.size() == 0) {
+      tmp_contents = std::move(parents);
+      parents = "";
+      contents = Slice(tmp_contents);
+      prev_offset = contents.data();
+      data_size = 0;
+    }
   }
 
-  status = WriteBlockCompressed(Slice(parents), file_, block_handle);
+  // There was no contents
+  *block_handle = BlockHandle::NullBlockHandle();
+
   return status;
 }
 

@@ -184,7 +184,7 @@ void RtreeTableReader::Prepare(const Slice& target) {
 
 Status RtreeTableReader::Get(const ReadOptions& ro, const Slice& target,
                              GetContext* get_context, bool skip_filters) {
-  InternalIterator* iter = new RtreeTableIterator(this);
+  unique_ptr<InternalIterator> iter(new RtreeTableIterator(this));
   iter->Seek(target);
   if (!iter->status().ok()) {
     return iter->status();

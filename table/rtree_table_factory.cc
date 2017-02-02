@@ -63,7 +63,4 @@ extern TableFactory* NewRtreeTableFactory(const RtreeTableOptions& options) {
   return new RtreeTableFactory(options);
 }
 
-//const std::string RtreeTablePropertyNames::kEncodingType =
-//    "rocksdb.plain.table.encoding.type";
-
 }  // namespace rocksdb

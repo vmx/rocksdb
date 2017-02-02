@@ -19,10 +19,9 @@
 
 namespace rocksdb {
 
-namespace {
+const std::string RtreeTablePropertyNames::kDimensions =
+    "rocksdb.rtree.table.dimensions";
 
-
-}  // namespace
 
 RtreeLeafBuilder::RtreeLeafBuilder(uint8_t dimensions)
     : buffer_(""),
@@ -165,6 +164,13 @@ Status RtreeTableBuilder::Finish() {
 
   // The data size is the key-values without the index structure
   properties_.data_size = FileSize();
+
+  // Store the number of dimensions of the table, so that the rtree table
+  // reader can make use of it
+  properties_.user_collected_properties[
+      RtreeTablePropertyNames::kDimensions].assign(
+          reinterpret_cast<const char*>(&table_options_.dimensions),
+          sizeof(table_options_.dimensions));
 
   // Store the index tree after the data blocks
   BlockHandle parents_block_handle;

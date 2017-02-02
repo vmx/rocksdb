@@ -110,6 +110,15 @@ RtreeTableReader::RtreeTableReader(const ImmutableCFOptions& ioptions,
     return;
   }
   table_properties_.reset(table_properties);
+  auto& user_props = table_properties->user_collected_properties;
+
+  auto dimensions = user_props.find(
+      RtreeTablePropertyNames::kDimensions);
+  if (dimensions == user_props.end()) {
+    status_ = Status::Corruption("Number of dimensions not found");
+    return;
+  }
+  dimensions_ = *reinterpret_cast<const uint8_t*>(dimensions->second.data());
 }
 
 RtreeTableReader::~RtreeTableReader() {

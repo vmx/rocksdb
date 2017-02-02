@@ -111,6 +111,8 @@ class RtreeTableReader: public TableReader {
   //TableProperties table_properties_;
   std::shared_ptr<const TableProperties> table_properties_;
   BlockHandle root_block_handle_;
+  // The number of dimensions the R-tree has
+  uint8_t dimensions_;
 
   friend class RtreeTableIterator;
 

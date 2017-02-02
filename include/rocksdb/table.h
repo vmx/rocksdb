@@ -382,6 +382,10 @@ extern TableFactory* NewCuckooTableFactory(
 
 #endif  // ROCKSDB_LITE
 
+// Table Properties that are specific to rtree table properties.
+struct RtreeTablePropertyNames {
+  static const std::string kDimensions;
+};
 
 struct RtreeTableOptions {
   // Approximate size of user data packed per block.  Note that the

@@ -25,7 +25,7 @@ class RtreeLeafBuilder {
   //RtreeLeafBuilder(const RtreeBlockBuilder&) = delete;
   //RtreeLeafBuilder& operator=(const RtreeBlockBuilder&) = delete;
 
-  RtreeLeafBuilder();
+  RtreeLeafBuilder(uint8_t dimensions);
   //~RtreeLeafBuilder();
 
   // Reset the contents as if the BlockBuilder was just constructed.
@@ -40,8 +40,8 @@ class RtreeLeafBuilder {
   // lifetime of this builder or until Reset() is called.
   Slice Finish();
 
-  // Returns the last key that was stored
-  Slice LastKey();
+  // Returns the key that should be used for the parent node
+  std::string ParentKey();
 
   // The current size of the buffer
   size_t Size() const {
@@ -58,9 +58,10 @@ class RtreeLeafBuilder {
   // Has Finish() been called?
   bool finished_;
 
-  // Offset within the `buffer_` where the last key is stored.
-  // This is needed for the parent node.
-  size_t last_key_offset_;
+  // The key that will be used by the parent node to point to its children
+  //const double* parent_key_;
+  std::vector<double> parent_key_;
+  uint8_t dimensions_;
 
   // No copying allowed
   RtreeLeafBuilder(const RtreeLeafBuilder&) = delete;

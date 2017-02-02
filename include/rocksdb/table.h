@@ -389,6 +389,8 @@ struct RtreeTableOptions {
   // actual size of the unit read from disk may be smaller if
   // compression is enabled.  This parameter can be changed dynamically.
   size_t block_size = 4 * 1024;
+  // The dimensionality the R-tree has
+  uint8_t dimensions = 2;
 };
 extern TableFactory* NewRtreeTableFactory(const RtreeTableOptions& options = RtreeTableOptions());
 

@@ -4,6 +4,7 @@
 //  of patent rights can be found in the PATENTS file in the same directory.
 
 #include "table/rtree_table_builder.h"
+#include "table/rtree_table_util.h"
 
 #include <assert.h>
 
@@ -22,58 +23,6 @@ namespace {
 
 
 }  // namespace
-
-const size_t kMinInternalKeySize = 8;
-
-
-class RtreeUtil {
- public:
-  // Encodes a given bounding box as `InternalKey`
-  static std::string EncodeKey(std::vector<double>& mbb);
-  // Return the enclosing bounds of two multi-dimensional bounding boxes
-  static std::vector<double> EnclosingMbb(const double* mbb1,
-                                          const double* mbb2,
-                                          uint8_t dimensions);
- private:
-  // It's not allowed to create an instance of `RtreeUtil`
-  RtreeUtil() {}
-};
-
-std::string RtreeUtil::EncodeKey(std::vector<double>& mbb) {
-  Slice slice = Slice(reinterpret_cast<const char*>(mbb.data()),
-                      sizeof(mbb[0]) * mbb.size());
-  // NOTE vmx 2017-02-01: Use the internal key representation for consistency
-  // across inner and leaf nodes
-  InternalKey ikey;
-  ikey.SetMaxPossibleForUserKey(slice);
-  return ikey.Encode().ToString();
-}
-
-std::vector<double> RtreeUtil::EnclosingMbb(
-    const double* mbb1,
-    const double* mbb2,
-    uint8_t dimensions) {
-  std::vector<double> enclosing;
-  enclosing.reserve(dimensions * 2);
-
-  if (mbb1 == nullptr) {
-    enclosing = std::vector<double>(mbb2, mbb2 + dimensions * 2);
-  } else if (mbb2 == nullptr) {
-    enclosing = std::vector<double>(mbb1, mbb1 + dimensions * 2);
-  } else {
-    // Loop through min and max in a single step
-    for (size_t ii = 0; ii < dimensions * 2; ii += 2) {
-      mbb1[ii] < mbb2[ii]
-                 ? enclosing.push_back(mbb1[ii])
-                 : enclosing.push_back(mbb2[ii]);
-      mbb1[ii + 1] > mbb2[ii + 1]
-                 ? enclosing.push_back(mbb1[ii + 1])
-                 : enclosing.push_back(mbb2[ii + 1]);
-    }
-  }
-  return enclosing;
-}
-
 
 RtreeLeafBuilder::RtreeLeafBuilder(uint8_t dimensions)
     : buffer_(""),

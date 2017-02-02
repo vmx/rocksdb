@@ -11,6 +11,7 @@
 #include "rocksdb/table_properties.h"
 
 #include "table/rtree_table_reader.h"
+#include "table/rtree_table_util.h"
 #include "table/get_context.h"
 #include "table/internal_iterator.h"
 #include "table/meta_blocks.h"
@@ -55,7 +56,7 @@ class RtreeTableIterator : public InternalIterator {
   std::string leaf_;
   // The offset within a uncompressed leaf
   uint64_t offset_;
-  Slice key_;
+  const double* key_;
   Slice value_;
   Status status_;
   // A call to`Seek()` specifie the bounding box we want to query on, hence
@@ -256,11 +257,7 @@ void RtreeTableIterator::Seek(const Slice& target) {
   blocks_to_root_.clear();
 
   target_ = std::string(target.data(), target.size());
-  for (Next(); status_.ok() && Valid(); Next()) {
-    if (table_->internal_comparator_.Compare(key(), target) >= 0) {
-      break;
-    }
-  }
+  Next();
 }
 
 void RtreeTableIterator::SeekForPrev(const Slice& target) {
@@ -270,19 +267,39 @@ void RtreeTableIterator::SeekForPrev(const Slice& target) {
 }
 
 void RtreeTableIterator::Next() {
-  if (!leaf_.empty() && offset_ < leaf_.size()) {
-    key_ = GetLengthPrefixedSlice(leaf_.data() + offset_);
-    offset_ = key_.data() - leaf_.data() + key_.size();
+  // We are within a leaf node
+  while (!leaf_.empty() && offset_ < leaf_.size()) {
+    // The key is an `InternalKey`. This means that the actual key (user key)
+    // is first and then some addition data appended. This means we can read
+    // the user key directly.
+    key_ = reinterpret_cast<const double*>(leaf_.data() + offset_);
+    // TODO vmx 2017-02-02: Write a method that returns the key size
+    const size_t key_size = table_->dimensions_ * 2 * sizeof(double) +
+        kMinInternalKeySize;
+    offset_ = reinterpret_cast<const char*>(key_) - leaf_.data() + key_size;
     value_ = GetLengthPrefixedSlice(leaf_.data() + offset_);
     offset_ = value_.data() - leaf_.data() + value_.size();
-  } else {
-    // If there is no next leaf, it will return an empty string and hence
-    // `Valid()` will be false
-    leaf_ = NextLeaf();
-    offset_ = 0;
-    if (!leaf_.empty()) {
-      Next();
+
+    const bool intersect = RtreeUtil::Intersect(
+        key_,
+        target_.empty() ? nullptr :
+            reinterpret_cast<const double*>(target_.data()),
+        table_->dimensions_);
+    // We have a matching key-value pair if the bounding boxes intersect
+    // each other
+    if (intersect) {
+      return;
     }
+  }
+
+  // The current leaf node was fully read, advance to the next one
+
+  // If there is no next leaf, it will return an empty string and hence
+  // `Valid()` will be false
+  leaf_ = NextLeaf();
+  offset_ = 0;
+  if (!leaf_.empty()) {
+    Next();
   }
 }
 
@@ -327,12 +344,25 @@ std::string RtreeTableIterator::NextLeaf() {
 
 BlockHandle RtreeTableIterator::GetNextChildHandle(Slice* inner) {
   while (inner->size() > 0) {
-    Slice key;
-    GetLengthPrefixedSlice(inner, &key);
-    // If the key we are looking for (`target_`) is bigger than the last key
-    // of the block, then this block can't be a match and we try the next one.
+    // The key is an `InternalKey`. This means that the actual key (user key)
+    // is first and then some addition data appended. This means we can read
+    // the user key directly.
+    // TODO vmx 2017-02-02: Write a method to get the key (perhaps even
+    // one getting the key from a slice with advancing it)
+    const double* key = reinterpret_cast<const double*>(inner->data());
+    // Advance the slice as we read the key
+    const size_t key_size = table_->dimensions_ * 2 * sizeof(double) +
+        kMinInternalKeySize;
+    inner->remove_prefix(key_size);
+    const bool intersect = RtreeUtil::Intersect(
+        key,
+        target_.empty() ? nullptr :
+            reinterpret_cast<const double*>(target_.data()),
+        table_->dimensions_);
+    // If the key doesn't intersect with the search window (the bounding box
+    // given by `Seek()`, try the next one.
     // If no target is given, just iterate over everything
-    if (!target_.empty() && table_->internal_comparator_.Compare(key, target_) < 0) {
+    if (!intersect) {
       // The key is followed by a handle, which is stored as a 64-bit offset
       // and 64-bit size.
       inner->remove_prefix(2 * sizeof(uint64_t));
@@ -354,7 +384,10 @@ void RtreeTableIterator::Prev() {
 
 Slice RtreeTableIterator::key() const {
   assert(Valid());
-  return key_;
+  // TODO vmx 2017-02-02: Add a method to return the fixed key size of the
+  // table
+  return Slice(reinterpret_cast<const char*>(key_),
+               table_->dimensions_ * 2 * sizeof(double) + kMinInternalKeySize);
 }
 
 Slice RtreeTableIterator::value() const {

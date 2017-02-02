@@ -45,4 +45,25 @@ std::vector<double> RtreeUtil::EnclosingMbb(
   return enclosing;
 }
 
+bool RtreeUtil::Intersect(
+    const double* aa,
+    const double* bb,
+    uint8_t dimensions) {
+  // Two bounding boxes are considered interseting if one of them isn't
+  // defined. This way a tablescan returning all the data is easily
+  // possible
+  if (aa == nullptr || bb == nullptr) {
+    return true;
+  }
+  // Loop through min and max in a single step. If the bounding boxes don't
+  // intersect in one dimension, they won't intersect at all, hence we
+  // can return early.
+  for (size_t ii = 0; ii < dimensions * 2; ii += 2) {
+    if (aa[ii] > bb[ii + 1] || bb[ii] > aa[ii + 1]) {
+      return false;
+    }
+  }
+  return true;
+}
+
 }  // namespace rocksdb

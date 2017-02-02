@@ -20,6 +20,10 @@ class RtreeUtil {
   static std::vector<double> EnclosingMbb(const double* mbb1,
                                           const double* mbb2,
                                           uint8_t dimensions);
+  // Return true if the two given bounding boxes intersect or one isn't defined
+  static bool Intersect(const double* mbb1,
+                        const double* mbb2,
+                        uint8_t dimensions);
  private:
   // It's not allowed to create an instance of `RtreeUtil`
   RtreeUtil() {}

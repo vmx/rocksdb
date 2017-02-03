@@ -331,7 +331,6 @@ BlockHandle RtreeTableIterator::GetNextChildHandle(Slice* inner) {
       uint64_t size;
       GetFixed64(inner, &offset);
       GetFixed64(inner, &size);
-      //return table_->ReadCompressed(offset, size);
       return BlockHandle(offset, size);
     }
   }

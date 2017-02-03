@@ -21,6 +21,11 @@ class RtreeUtil {
                                           const double* mbb2,
                                           uint8_t dimensions);
   // Return true if the two given bounding boxes intersect or one isn't defined
+  // Convinience method to make the caller code easier to read
+  static bool Intersect(const double* mbb1,
+                        const std::string& mbb2,
+                        uint8_t dimensions);
+  // Return true if the two given bounding boxes intersect or one isn't defined
   static bool Intersect(const double* mbb1,
                         const double* mbb2,
                         uint8_t dimensions);

@@ -47,6 +47,17 @@ std::vector<double> RtreeUtil::EnclosingMbb(
 
 bool RtreeUtil::Intersect(
     const double* aa,
+    const std::string& bb,
+    uint8_t dimensions) {
+  return Intersect(aa,
+                   bb.empty() ?
+                       nullptr :
+                       reinterpret_cast<const double*>(bb.data()),
+                   dimensions);
+}
+
+bool RtreeUtil::Intersect(
+    const double* aa,
     const double* bb,
     uint8_t dimensions) {
   // Two bounding boxes are considered interseting if one of them isn't

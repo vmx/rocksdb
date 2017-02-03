@@ -120,6 +120,9 @@ class RtreeTableReader: public TableReader {
   std::string ReadCompressed(size_t offset, size_t size) const;
   std::string ReadCompressed(BlockHandle* block_handle) const;
 
+  // Return the size of the keys used in this table
+  size_t KeySize() const;
+
   // No copying allowed
   explicit RtreeTableReader(const TableReader&) = delete;
   void operator=(const TableReader&) = delete;

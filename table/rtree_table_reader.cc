@@ -186,6 +186,10 @@ uint64_t RtreeTableReader::ApproximateOffsetOf(const Slice& key) {
   return 0;
 }
 
+size_t RtreeTableReader::KeySize() const {
+  return dimensions_ * 2 * sizeof(double) + kMinInternalKeySize;
+}
+
 RtreeTableIterator::RtreeTableIterator(RtreeTableReader* table)
     : table_(table),
       parent_offset_(0),
@@ -239,9 +243,7 @@ void RtreeTableIterator::Next() {
     // is first and then some addition data appended. This means we can read
     // the user key directly.
     key_ = reinterpret_cast<const double*>(leaf_.data() + offset_);
-    // TODO vmx 2017-02-02: Write a method that returns the key size
-    const size_t key_size = table_->dimensions_ * 2 * sizeof(double) +
-        kMinInternalKeySize;
+    const size_t key_size = table_->KeySize();
     offset_ = reinterpret_cast<const char*>(key_) - leaf_.data() + key_size;
     value_ = GetLengthPrefixedSlice(leaf_.data() + offset_);
     offset_ = value_.data() - leaf_.data() + value_.size();
@@ -313,13 +315,9 @@ BlockHandle RtreeTableIterator::GetNextChildHandle(Slice* inner) {
     // The key is an `InternalKey`. This means that the actual key (user key)
     // is first and then some addition data appended. This means we can read
     // the user key directly.
-    // TODO vmx 2017-02-02: Write a method to get the key (perhaps even
-    // one getting the key from a slice with advancing it)
     const double* key = reinterpret_cast<const double*>(inner->data());
     // Advance the slice as we read the key
-    const size_t key_size = table_->dimensions_ * 2 * sizeof(double) +
-        kMinInternalKeySize;
-    inner->remove_prefix(key_size);
+    inner->remove_prefix(table_->KeySize());
     const bool intersect = RtreeUtil::Intersect(
         key,
         target_.empty() ? nullptr :
@@ -350,10 +348,7 @@ void RtreeTableIterator::Prev() {
 
 Slice RtreeTableIterator::key() const {
   assert(Valid());
-  // TODO vmx 2017-02-02: Add a method to return the fixed key size of the
-  // table
-  return Slice(reinterpret_cast<const char*>(key_),
-               table_->dimensions_ * 2 * sizeof(double) + kMinInternalKeySize);
+  return Slice(reinterpret_cast<const char*>(key_), table_->KeySize());
 }
 
 Slice RtreeTableIterator::value() const {

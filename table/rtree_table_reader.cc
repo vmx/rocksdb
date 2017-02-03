@@ -175,20 +175,8 @@ void RtreeTableReader::Prepare(const Slice& target) {
 
 Status RtreeTableReader::Get(const ReadOptions& ro, const Slice& target,
                              GetContext* get_context, bool skip_filters) {
-  unique_ptr<InternalIterator> iter(new RtreeTableIterator(this));
-  iter->Seek(target);
-  if (!iter->status().ok()) {
-    return iter->status();
-  }
-
-  // The key found by `Seek()` might be bigger than the target, hence check
-  // for equality
-  ParsedInternalKey parsed_key;
-  ParseInternalKey(iter->key(), &parsed_key);
-  if (parsed_key.user_key.compare(ExtractUserKey(target)) == 0) {
-    get_context->SaveValue(parsed_key, iter->value());
-  }
-  return Status::OK();
+  assert(false);
+  status_ = Status::NotSupported("Get() is not supported in RtreeTable");
 }
 
 uint64_t RtreeTableReader::ApproximateOffsetOf(const Slice& key) {

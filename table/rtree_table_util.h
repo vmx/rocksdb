@@ -17,18 +17,18 @@ class RtreeUtil {
   // Encodes a given bounding box as `InternalKey`
   static std::string EncodeKey(std::vector<double>& mbb);
   // Return the enclosing bounds of two multi-dimensional bounding boxes
-  static std::vector<double> EnclosingMbb(const double* mbb1,
-                                          const double* mbb2,
+  static std::vector<double> EnclosingMbb(const double* aa,
+                                          const double* bb,
                                           uint8_t dimensions);
   // Return true if the two given bounding boxes intersect or one isn't defined
   // Convinience method to make the caller code easier to read
-  static bool Intersect(const double* mbb1,
-                        const std::string& mbb2,
-                        uint8_t dimensions);
+  static bool IntersectMbb(const double* aa,
+                           const std::string& bb,
+                           uint8_t dimensions);
   // Return true if the two given bounding boxes intersect or one isn't defined
-  static bool Intersect(const double* mbb1,
-                        const double* mbb2,
-                        uint8_t dimensions);
+  static bool IntersectMbb(const double* aa,
+                           const double* bb,
+                           uint8_t dimensions);
  private:
   // It's not allowed to create an instance of `RtreeUtil`
   RtreeUtil() {}

@@ -248,9 +248,9 @@ void RtreeTableIterator::Next() {
     value_ = GetLengthPrefixedSlice(leaf_.data() + offset_);
     offset_ = value_.data() - leaf_.data() + value_.size();
 
-    const bool intersect = RtreeUtil::Intersect(key_,
-                                                target_,
-                                                table_->dimensions_);
+    const bool intersect = RtreeUtil::IntersectMbb(key_,
+                                                   target_,
+                                                   table_->dimensions_);
     // We have a matching key-value pair if the bounding boxes intersect
     // each other
     if (intersect) {
@@ -316,9 +316,9 @@ BlockHandle RtreeTableIterator::GetNextChildHandle(Slice* inner) {
     const double* key = reinterpret_cast<const double*>(inner->data());
     // Advance the slice as we read the key
     inner->remove_prefix(table_->KeySize());
-    const bool intersect = RtreeUtil::Intersect(key,
-                                                target_,
-                                                table_->dimensions_);
+    const bool intersect = RtreeUtil::IntersectMbb(key,
+                                                   target_,
+                                                   table_->dimensions_);
     // If the key doesn't intersect with the search window (the bounding box
     // given by `Seek()`, try the next one.
     // If no target is given, just iterate over everything

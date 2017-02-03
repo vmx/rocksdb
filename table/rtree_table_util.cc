@@ -21,42 +21,42 @@ std::string RtreeUtil::EncodeKey(std::vector<double>& mbb) {
 }
 
 std::vector<double> RtreeUtil::EnclosingMbb(
-    const double* mbb1,
-    const double* mbb2,
+    const double* aa,
+    const double* bb,
     uint8_t dimensions) {
   std::vector<double> enclosing;
   enclosing.reserve(dimensions * 2);
 
-  if (mbb1 == nullptr) {
-    enclosing = std::vector<double>(mbb2, mbb2 + dimensions * 2);
-  } else if (mbb2 == nullptr) {
-    enclosing = std::vector<double>(mbb1, mbb1 + dimensions * 2);
+  if (aa == nullptr) {
+    enclosing = std::vector<double>(bb, bb + dimensions * 2);
+  } else if (bb == nullptr) {
+    enclosing = std::vector<double>(aa, aa + dimensions * 2);
   } else {
     // Loop through min and max in a single step
     for (size_t ii = 0; ii < dimensions * 2; ii += 2) {
-      mbb1[ii] < mbb2[ii]
-                 ? enclosing.push_back(mbb1[ii])
-                 : enclosing.push_back(mbb2[ii]);
-      mbb1[ii + 1] > mbb2[ii + 1]
-                 ? enclosing.push_back(mbb1[ii + 1])
-                 : enclosing.push_back(mbb2[ii + 1]);
+      aa[ii] < bb[ii]
+                 ? enclosing.push_back(aa[ii])
+                 : enclosing.push_back(bb[ii]);
+      aa[ii + 1] > bb[ii + 1]
+                 ? enclosing.push_back(aa[ii + 1])
+                 : enclosing.push_back(bb[ii + 1]);
     }
   }
   return enclosing;
 }
 
-bool RtreeUtil::Intersect(
+bool RtreeUtil::IntersectMbb(
     const double* aa,
     const std::string& bb,
     uint8_t dimensions) {
-  return Intersect(aa,
-                   bb.empty() ?
-                       nullptr :
-                       reinterpret_cast<const double*>(bb.data()),
-                   dimensions);
+  return IntersectMbb(aa,
+                      bb.empty() ?
+                          nullptr :
+                          reinterpret_cast<const double*>(bb.data()),
+                      dimensions);
 }
 
-bool RtreeUtil::Intersect(
+bool RtreeUtil::IntersectMbb(
     const double* aa,
     const double* bb,
     uint8_t dimensions) {

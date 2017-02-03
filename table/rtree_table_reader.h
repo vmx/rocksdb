@@ -116,22 +116,6 @@ class RtreeTableReader: public TableReader {
 
   friend class RtreeTableIterator;
 
-  // Read the key and value at `offset` to parameters for keys, the and
-  // `seekable`.
-  // On success, `offset` will be updated as the offset for the next key.
-  // `parsed_key` will be key in parsed format.
-  // if `internal_key` is not empty, it will be filled with key with slice
-  // format.
-  // if `seekable` is not null, it will return whether we can directly read
-  // data using this offset.
-  //Status Next(uint64_t* offset, ParsedInternalKey* parsed_key,
-  //            Slice* internal_key, Slice* value) const;
-
-  // Reads a slice from `offset` which is prefixed with a 64 fixed sized int.
-  // It will also advance the offset to the next slice
-  //Status ReadFixedSlice(uint64_t* offset, Slice* slice) const;
-  std::string ReadFixedSlice(uint64_t* offset) const;
-
   // Read some compressed data from file
   std::string ReadCompressed(size_t offset, size_t size) const;
   std::string ReadCompressed(BlockHandle* block_handle) const;

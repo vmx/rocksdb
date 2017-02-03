@@ -139,25 +139,6 @@ InternalIterator* RtreeTableReader::NewIterator(const ReadOptions& options,
   }
 }
 
-std::string RtreeTableReader::ReadFixedSlice(uint64_t* offset) const {
-  Slice uint64_slice;
-  char uint64_buf[sizeof(uint64_t)];
-
-  uint64_t slice_size = 0;
-  Status status = file_->Read(*offset, sizeof(uint64_t), &uint64_slice,
-                              uint64_buf);
-  GetFixed64(&uint64_slice, &slice_size);
-  *offset += sizeof(uint64_t);
-
-  Slice slice;
-  std::string slice_buf;
-  slice_buf.reserve(slice_size);
-  status = file_->Read(*offset, slice_size, &slice,
-                       const_cast<char *>(slice_buf.c_str()));
-  *offset += slice_size;
-  return std::string(slice.data(), slice.size());
-}
-
 std::string RtreeTableReader::ReadCompressed(BlockHandle* block_handle) const {
   return ReadCompressed(block_handle->offset(), block_handle->size());
 }

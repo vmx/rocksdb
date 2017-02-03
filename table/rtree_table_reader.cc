@@ -76,6 +76,9 @@ class RtreeTableIterator : public InternalIterator {
   // Read the handle of the next child block of an inner node
   BlockHandle GetNextChildHandle(Slice* inner);
 
+  // Reset the internal state of the iterator
+  void Reset();
+
   // No copying allowed
   RtreeTableIterator(const RtreeTableIterator&) = delete;
   void operator=(const Iterator&) = delete;
@@ -195,20 +198,20 @@ RtreeTableIterator::RtreeTableIterator(RtreeTableReader* table)
 RtreeTableIterator::~RtreeTableIterator() {
 }
 
+void RtreeTableIterator::Reset() {
+  parent_offset_ = 0;
+  offset_ = 0;
+  leaf_.clear();
+  blocks_to_root_.clear();
+  target_.clear();
+}
+
 bool RtreeTableIterator::Valid() const {
   return !leaf_.empty() && offset_ <= leaf_.size();
 }
 
 void RtreeTableIterator::SeekToFirst() {
-  // TODO vmx 2017-01-20: Add a `reset()` method which resets the offsets
-  // and buffers
-  parent_offset_ = 0;
-  offset_ = 0;
-  leaf_.clear();
-  blocks_to_root_.clear();
-
-  target_ = "";
-
+  Reset();
   Next();
 }
 
@@ -218,13 +221,7 @@ void RtreeTableIterator::SeekToLast() {
 }
 
 void RtreeTableIterator::Seek(const Slice& target) {
-  // TODO vmx 2017-01-20: Add a `reset()` method which resets the offsets
-  // and buffers
-  parent_offset_ = 0;
-  offset_ = 0;
-  leaf_.clear();
-  blocks_to_root_.clear();
-
+  Reset();
   target_ = std::string(target.data(), target.size());
   Next();
 }

@@ -270,6 +270,22 @@ class SkipListFactory : public MemTableRepFactory {
   const size_t lookahead_;
 };
 
+class SkipListMbbFactory : public MemTableRepFactory {
+ public:
+  explicit SkipListMbbFactory(size_t lookahead = 0) : lookahead_(lookahead) {}
+
+  using MemTableRepFactory::CreateMemTableRep;
+  virtual MemTableRep* CreateMemTableRep(const MemTableRep::KeyComparator&,
+                                         Allocator*, const SliceTransform*,
+                                         Logger* logger) override;
+  virtual const char* Name() const override { return "SkipListMbbFactory"; }
+
+  bool IsInsertConcurrentlySupported() const override { return true; }
+
+ private:
+  const size_t lookahead_;
+};
+
 #ifndef ROCKSDB_LITE
 // This creates MemTableReps that are backed by an std::vector. On iteration,
 // the vector is sorted. This is useful for workloads where iteration is very

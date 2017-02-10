@@ -7,6 +7,7 @@
 #include "db/memtable.h"
 #include "rocksdb/memtablerep.h"
 #include "util/arena.h"
+#include "util/rtree.h"
 
 namespace rocksdb {
 namespace {
@@ -17,6 +18,8 @@ class SkipListRep : public MemTableRep {
   const size_t lookahead_;
 
   friend class LookaheadIterator;
+  // NOTE vmx 2017-02-10: Without it SkipListMbbRep::GetIterator() won't work
+  friend class SkipListMbbRep;
 public:
  explicit SkipListRep(const MemTableRep::KeyComparator& compare,
                       Allocator* allocator, const SliceTransform* transform,
@@ -268,6 +271,80 @@ public:
     }
   }
 };
+
+class SkipListMbbRep : public SkipListRep {
+ public:
+  explicit SkipListMbbRep(const MemTableRep::KeyComparator& compare,
+                                 Allocator* allocator,
+                                 const SliceTransform* transform,
+                                 const size_t lookahead) :
+      SkipListRep(compare, allocator, transform, lookahead) {}
+
+  class Iterator : public SkipListRep::Iterator {
+   public:
+    explicit Iterator(
+        const InlineSkipList<const MemTableRep::KeyComparator&>* list,
+        IteratorContext* iterator_context)
+        : SkipListRep::Iterator(list) {
+      if (iterator_context != nullptr) {
+        RtreeIteratorContext* context =
+            reinterpret_cast<RtreeIteratorContext*>(iterator_context);
+        Slice query_slice = Slice(context->query_mbb);
+        Slice keypath_slice;
+        GetLengthPrefixedSlice(&query_slice, &keypath_slice);
+        query_keypath_ = keypath_slice.ToString();
+        query_mbb_ = ReadMbb(query_slice);
+      }
+    }
+
+    virtual void Next() override {
+      SkipListRep::Iterator::Next();
+      NextIfDisjoint();
+    }
+
+    virtual void SeekToFirst() override {
+      SkipListRep::Iterator::SeekToFirst();
+      NextIfDisjoint();
+    }
+
+   private:
+    // The multi-dimensional bounding box the query was done with
+    std::vector<Interval> query_mbb_;
+    // The keypath the query is on
+    std::string query_keypath_;
+
+    // Skips the current key if it doesn't intersect with the query window
+    // bounding box and moves on to the next one.
+    void NextIfDisjoint() {
+      // If the `query_keypath_` is empty, no context was given, hence
+      // it should perform a full table scan and not skip any data
+      if (Valid() && !query_keypath_.empty()) {
+        Slice internal_key = GetLengthPrefixedSlice(key());
+        Slice key = ExtractUserKey(internal_key);
+        Slice keypath;
+        GetLengthPrefixedSlice(&key, &keypath);
+        // If the keypath is different, they are disjoint
+        if (keypath.compare(Slice(query_keypath_)) != 0) {
+          Next();
+        } else {
+          std::vector<Interval> mbb = ReadMbb(key);
+          if (!IntersectMbb(mbb, query_mbb_)) {
+            Next();
+          }
+        }
+      }
+    }
+  };
+
+  virtual MemTableRep::Iterator* GetIterator(
+      IteratorContext* iterator_context,
+      Arena* arena = nullptr) override {
+    void *mem =
+        arena ? arena->AllocateAligned(sizeof(SkipListMbbRep::Iterator))
+              : operator new(sizeof(SkipListMbbRep::Iterator));
+    return new (mem) SkipListMbbRep::Iterator(&skip_list_, iterator_context);
+  }
+};
 }
 
 MemTableRep* SkipListFactory::CreateMemTableRep(
@@ -276,4 +353,9 @@ MemTableRep* SkipListFactory::CreateMemTableRep(
   return new SkipListRep(compare, allocator, transform, lookahead_);
 }
 
+MemTableRep* SkipListMbbFactory::CreateMemTableRep(
+    const MemTableRep::KeyComparator& compare, Allocator* allocator,
+    const SliceTransform* transform, Logger* logger) {
+  return new SkipListMbbRep(compare, allocator, transform, lookahead_);
+}
 } // namespace rocksdb

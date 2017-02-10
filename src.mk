@@ -140,6 +140,7 @@ LIB_SOURCES =                                                   \
   util/murmurhash.cc                                            \
   util/random.cc                                                \
   util/rate_limiter.cc                                          \
+  util/rtree.cc                                                 \
   util/slice.cc                                                 \
   util/sst_file_manager_impl.cc                                 \
   util/status.cc                                                \

@@ -6,6 +6,7 @@
 #include "db/inlineskiplist.h"
 #include "db/memtable.h"
 #include "rocksdb/memtablerep.h"
+#include "table/rtree_table_util.h"
 #include "util/arena.h"
 
 namespace rocksdb {
@@ -17,6 +18,8 @@ class SkipListRep : public MemTableRep {
   const size_t lookahead_;
 
   friend class LookaheadIterator;
+  // NOTE vmx 2017-02-10: Without it SkipListMbbRep::GetIterator() won't work
+  friend class SkipListMbbRep;
 public:
   explicit SkipListRep(const MemTableRep::KeyComparator& compare,
                        MemTableAllocator* allocator,
@@ -264,6 +267,68 @@ public:
     }
   }
 };
+
+class SkipListMbbRep : public SkipListRep {
+ public:
+  explicit SkipListMbbRep(const MemTableRep::KeyComparator& compare,
+                                 MemTableAllocator* allocator,
+                                 const SliceTransform* transform,
+                                 const size_t lookahead) :
+      SkipListRep(compare, allocator, transform, lookahead) {}
+
+  class Iterator : public SkipListRep::Iterator {
+   public:
+    explicit Iterator(
+        const InlineSkipList<const MemTableRep::KeyComparator&>* list)
+        : SkipListRep::Iterator(list),
+          query_mbb_(nullptr) {}
+
+    virtual void Next() {
+      SkipListRep::Iterator::Next();
+      if (Valid()) {
+        rocksdb::Slice internal_key = rocksdb::GetLengthPrefixedSlice(key());
+        const double* mbb = reinterpret_cast<const double*>(
+            internal_key.data());
+        // The `- 8` is the sequence number and type postfix
+        const uint8_t dimensions =
+            ((internal_key.size() - 8) / sizeof(double)) / 2;
+
+        // Try next key if it doesn't intersect
+        if (!RtreeUtil::IntersectMbb(query_mbb_, mbb, dimensions)) {
+          Next();
+        }
+      }
+    }
+
+    virtual void Seek(const Slice& internal_key, const char *memtable_key) {
+      query_mbb_ = reinterpret_cast<const double*>(internal_key.data());
+      SkipListRep::Iterator::Seek(internal_key, memtable_key);
+    }
+
+    virtual void SeekToFirst() override {
+      query_mbb_ = nullptr;
+      SkipListRep::Iterator::SeekToFirst();
+    }
+
+   private:
+    // The multi-dimensional bounding box the query was done with
+    const double* query_mbb_;
+  };
+
+  virtual MemTableRep::Iterator* GetIterator(Arena* arena = nullptr) override {
+    if (lookahead_ > 0) {
+      void *mem =
+        arena ? arena->AllocateAligned(sizeof(SkipListMbbRep::LookaheadIterator))
+              : operator new(sizeof(SkipListMbbRep::LookaheadIterator));
+      return new (mem) SkipListMbbRep::LookaheadIterator(*this);
+    } else {
+      void *mem =
+        arena ? arena->AllocateAligned(sizeof(SkipListMbbRep::Iterator))
+              : operator new(sizeof(SkipListMbbRep::Iterator));
+      return new (mem) SkipListMbbRep::Iterator(&skip_list_);
+    }
+  }
+};
 }
 
 MemTableRep* SkipListFactory::CreateMemTableRep(
@@ -272,4 +337,9 @@ MemTableRep* SkipListFactory::CreateMemTableRep(
   return new SkipListRep(compare, allocator, transform, lookahead_);
 }
 
+MemTableRep* SkipListMbbFactory::CreateMemTableRep(
+    const MemTableRep::KeyComparator& compare, MemTableAllocator* allocator,
+    const SliceTransform* transform, Logger* logger) {
+  return new SkipListMbbRep(compare, allocator, transform, lookahead_);
+}
 } // namespace rocksdb

@@ -21,7 +21,6 @@ int main() {
 #include "table/block_based_table_factory.h"
 #include "table/internal_iterator.h"
 #include "table/plain_table_factory.h"
-#include "table/rtree_table_factory.h"
 #include "table/table_builder.h"
 #include "table/get_context.h"
 #include "util/file_reader_writer.h"
@@ -267,8 +266,8 @@ DEFINE_bool(through_db, false, "If enable, a DB instance will be created and "
             "a table reader.");
 DEFINE_bool(mmap_read, true, "Whether use mmap read");
 DEFINE_string(table_factory, "block_based",
-              "Table factory to use: `block_based` (default), `plain_table`, "
-              "`cuckoo_hash` or `rtree_table`.");
+              "Table factory to use: `block_based` (default), `plain_table` or "
+              "`cuckoo_hash`.");
 DEFINE_string(time_unit, "microsecond",
               "The time unit used for measuring performance. User can specify "
               "`microsecond` (default) or `nanosecond`");
@@ -319,8 +318,6 @@ int main(int argc, char** argv) {
 #endif  // ROCKSDB_LITE
   } else if (FLAGS_table_factory == "block_based") {
     tf.reset(new rocksdb::BlockBasedTableFactory());
-  } else if (FLAGS_table_factory == "rtree_table") {
-    tf.reset(rocksdb::NewRtreeTableFactory());
   } else {
     fprintf(stderr, "Invalid table type %s\n", FLAGS_table_factory.c_str());
   }

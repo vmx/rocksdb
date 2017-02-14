@@ -44,76 +44,91 @@ No special API is needed, the existing RocksDB API is re-used.
 
 The include files that are needed for the API section are:
 
-    #include <iostream>
+```C++
+#include <iostream>
 
-    #include "db/memtable.h"
-    #include "rocksdb/db.h"
-    #include "rocksdb/table.h"
-    #include "table/rtree_table_util.h"
+#include "db/memtable.h"
+#include "rocksdb/db.h"
+#include "rocksdb/table.h"
+#include "table/rtree_table_util.h"
+```
 
 For using the R-tree you need to define the custom Table, Memtable and
 comparator:
 
-    rocksdb::Options options;
-    rocksdb::RtreeTableOptions table_options;
-    table_options.dimensions = 2;
-    options.table_factory.reset(rocksdb::NewRtreeTableFactory(table_options));
-    options.memtable_factory.reset(new rocksdb::SkipListMbbFactory);
-    options.comparator = rocksdb::LowxComparator();
+```C++
+rocksdb::Options options;
+rocksdb::RtreeTableOptions table_options;
+table_options.dimensions = 2;
+options.table_factory.reset(rocksdb::NewRtreeTableFactory(table_options));
+options.memtable_factory.reset(new rocksdb::SkipListMbbFactory);
+options.comparator = rocksdb::LowxComparator();
+```
 
 #### Adding data
 
 Opening a database is just the same as with a vanilla RocksDB:
 
-    rocksdb::DB* raw_db;
-    std::unique_ptr<rocksdb::DB> db;
-    options.create_if_missing = true;
-    rocksdb::Status status = rocksdb::DB::Open(options, "/tmp/rtreetable", &raw_db);
-    db.reset(raw_db);
+```C++
+rocksdb::DB* raw_db;
+std::unique_ptr<rocksdb::DB> db;
+options.create_if_missing = true;
+rocksdb::Status status = rocksdb::DB::Open(options, "/tmp/rtreetable", &raw_db);
+db.reset(raw_db);
+```
 
 The data that is inserted are multi-dimensional bounding boxes. This means
 you have a low and a high value for every dimension. Currently only doubles
 are supported. Your code may look like this:
 
-    std::vector<double> augsburg_key = {10.75, 11.11, 48.24, 48.50};
-    rocksdb::Slice augsburg_slice = rocksdb::Slice(reinterpret_cast<const char*>(
-        augsburg_key.data()), sizeof(augsburg_key[0]) * augsburg_key.size());
-    status = raw_db->Put(rocksdb::WriteOptions(), augsburg_slice, "augsburg");
-    std::vector<double> alameda_key = {-122.34, -122.22, 37.71, 37.80};
-    rocksdb::Slice alameda_slice = rocksdb::Slice(reinterpret_cast<const char*>(
-        alameda_key.data()), sizeof(alameda_key[0]) * alameda_key.size());
-    status = db->Put(rocksdb::WriteOptions(), alameda_slice, "alameda");
+```C++
+std::vector<double> augsburg_key = {10.75, 11.11, 48.24, 48.50};
+rocksdb::Slice augsburg_slice = rocksdb::Slice(reinterpret_cast<const char*>(
+    augsburg_key.data()), sizeof(augsburg_key[0]) * augsburg_key.size());
+status = raw_db->Put(rocksdb::WriteOptions(), augsburg_slice, "augsburg");
+std::vector<double> alameda_key = {-122.34, -122.22, 37.71, 37.80};
+rocksdb::Slice alameda_slice = rocksdb::Slice(reinterpret_cast<const char*>(
+    alameda_key.data()), sizeof(alameda_key[0]) * alameda_key.size());
+status = db->Put(rocksdb::WriteOptions(), alameda_slice, "alameda");
+```
 
 #### Querying the data
 
 Creating and iterator is the same as with a vanilla RocksDB:
 
-    std::unique_ptr <rocksdb::Iterator> it(db->NewIterator(rocksdb::ReadOptions()));
+```C++
+std::unique_ptr <rocksdb::Iterator> it(db->NewIterator(rocksdb::ReadOptions()));
+```
 
 The bounding box you want to query on is specified by `Seek()`:
 
-    std::vector<double> query = {10, 11, 48, 49};
-    rocksdb::Slice query_slice = rocksdb::Slice(reinterpret_cast<const char*>(
-        query.data()), sizeof(query[0]) * query.size());
-    it->Seek(query_slice);
+```C++
+std::vector<double> query = {10, 11, 48, 49};
+rocksdb::Slice query_slice = rocksdb::Slice(reinterpret_cast<const char*>(
+    query.data()), sizeof(query[0]) * query.size());
+it->Seek(query_slice);
+```
 
 Iterating over the results is again the same as the vanilla RocksDB. This
 prints out the values of the bounding boxes that intersect with the window
 query as specified by `Seek()`.
 
-    for (; it->Valid(); it->Next()) {
-        std::cout << it->value().ToString() << std::endl;
-    }
-
+```C++
+for (; it->Valid(); it->Next()) {
+    std::cout << it->value().ToString() << std::endl;
+}
+````
 
 #### Full example
 
 A full example can be found in
 [examples/rtree_example.cc][3]. You can build it with
 
-    make static_lib
-    cd examples
-    make rtree_example
+```Shell
+make static_lib
+cd examples
+make rtree_example
+```
 
 The executable is located in the exxamples directory.
 

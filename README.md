@@ -111,6 +111,7 @@ query as specified by `Seek()`.
 A full example can be found in
 [examples/rtree_example.cc][2]. You can build it with
 
+    make static_lib
     cd examples
     make rtree_example
 

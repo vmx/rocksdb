@@ -7,6 +7,7 @@
 #include <string>
 #include <vector>
 
+#include "rocksdb/comparator.h"
 
 namespace rocksdb {
 
@@ -33,5 +34,9 @@ class RtreeUtil {
   // It's not allowed to create an instance of `RtreeUtil`
   RtreeUtil() {}
 };
+
+// A comparator that sorts the multi-dimensional bounding boxes by the
+// lower value of the first dimension.
+extern const Comparator* LowxComparator();
 
 }  // namespace rocksdb

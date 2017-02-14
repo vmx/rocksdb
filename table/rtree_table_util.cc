@@ -77,4 +77,47 @@ bool RtreeUtil::IntersectMbb(
   return true;
 }
 
+namespace {
+class LowxComparatorImpl : public rocksdb::Comparator {
+ public:
+  const char* Name() const {
+    return "rocksdb.LowxComparator";
+  }
+
+  int Compare(const rocksdb::Slice& slice_aa, const rocksdb::Slice& slice_bb) const {
+    assert(slice_aa.size() == slice_bb.size());
+
+    double* aa = (double*)slice_aa.data();
+    double* bb = (double*)slice_bb.data();
+    const uint8_t dimensions = (slice_aa.size() / sizeof(double)) / 2;
+
+    // Loop through the minimim values only
+    for (size_t ii = 0; ii < dimensions ; ii++) {
+      if (aa[ii * 2] < bb[ii * 2]) {
+        return -1;
+      } else if (aa[ii * 2] > bb[ii * 2]) {
+        return 1;
+      }
+      // Continue looping if aa[ii * 2] == bb[ii * 2]
+    }
+    return 0;
+  }
+
+  void FindShortestSeparator(std::string* start,
+      const rocksdb::Slice& limit) const {
+    return;
+  }
+
+  void FindShortSuccessor(std::string* key) const  {
+    return;
+  }
+};
+
+}// namespace
+
+const Comparator* LowxComparator() {
+  static LowxComparatorImpl lowx;
+  return &lowx;
+}
+
 }  // namespace rocksdb

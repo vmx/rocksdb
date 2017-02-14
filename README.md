@@ -17,7 +17,7 @@ The code isn't heavily tested or optimised yet, its release follows the
 
 The goal is to make this fork obsolete and make the code work with a vanilla
 RocksDB. Until this is achieved, I'll try to keep the code changes to the
-original source as minimal as possible.
+original source as minimal as possible ([diff of all my changes][1]).
 
 
 ### Implementation
@@ -29,7 +29,7 @@ The R-tree is ordered by the low value of the first dimension. This minimises
 the changes that need to be done on RocksDB as it expects a total order of
 the keys. This also leads to the nice property of having the results always
 sorted the same way. The idea is based on the paper [On Support of Ordering in
-Multidimensional Data Structures by Filip Křižka, Michal Krátký, Radim Bača][1].
+Multidimensional Data Structures by Filip Křižka, Michal Krátký, Radim Bača][2].
 
 The Memtable is just RocksDB's default SkipList where there not matching
 bounding boxes are filtered out dynamically on query time.
@@ -109,7 +109,7 @@ query as specified by `Seek()`.
 #### Full example
 
 A full example can be found in
-[examples/rtree_example.cc][2]. You can build it with
+[examples/rtree_example.cc][3]. You can build it with
 
     make static_lib
     cd examples
@@ -118,8 +118,9 @@ A full example can be found in
 The executable is located in the exxamples directory.
 
 
-[1]: http://ceur-ws.org/Vol-639/165-krizka.pdf
-[2]: examples/rtree_example.cc
+[1]: https://github.com/vmx/rocksdb/compare/master...vmx:rtree-table?diff=split&name=rtree-table#files_bucket
+[2]: http://ceur-ws.org/Vol-639/165-krizka.pdf
+[3]: examples/rtree_example.cc
 
 
 # The original Readme

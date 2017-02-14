@@ -179,7 +179,7 @@ void RtreeTableReader::Prepare(const Slice& target) {
 Status RtreeTableReader::Get(const ReadOptions& ro, const Slice& target,
                              GetContext* get_context, bool skip_filters) {
   assert(false);
-  status_ = Status::NotSupported("Get() is not supported in RtreeTable");
+  return Status::NotSupported("Get() is not supported in RtreeTable");
 }
 
 uint64_t RtreeTableReader::ApproximateOffsetOf(const Slice& key) {
@@ -327,8 +327,8 @@ BlockHandle RtreeTableIterator::GetNextChildHandle(Slice* inner) {
       // and 64-bit size.
       inner->remove_prefix(2 * sizeof(uint64_t));
     } else {
-      uint64_t offset;
-      uint64_t size;
+      uint64_t offset = 0;
+      uint64_t size = 0;
       GetFixed64(inner, &offset);
       GetFixed64(inner, &size);
       return BlockHandle(offset, size);

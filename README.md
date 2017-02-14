@@ -130,7 +130,7 @@ cd examples
 make rtree_example
 ```
 
-The executable is located in the exxamples directory.
+The executable is located in the examples directory.
 
 
 [1]: https://github.com/vmx/rocksdb/compare/master...vmx:rtree-table?diff=split&name=rtree-table#files_bucket

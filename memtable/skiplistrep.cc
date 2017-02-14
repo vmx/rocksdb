@@ -283,7 +283,7 @@ class SkipListMbbRep : public SkipListRep {
         : SkipListRep::Iterator(list),
           query_mbb_(nullptr) {}
 
-    virtual void Next() {
+    virtual void Next() override {
       SkipListRep::Iterator::Next();
       if (Valid()) {
         rocksdb::Slice internal_key = rocksdb::GetLengthPrefixedSlice(key());
@@ -300,7 +300,8 @@ class SkipListMbbRep : public SkipListRep {
       }
     }
 
-    virtual void Seek(const Slice& internal_key, const char *memtable_key) {
+    virtual void Seek(const Slice& internal_key, const char *memtable_key)
+        override {
       query_mbb_ = reinterpret_cast<const double*>(internal_key.data());
       SkipListRep::Iterator::Seek(internal_key, memtable_key);
     }

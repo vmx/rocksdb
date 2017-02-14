@@ -20,8 +20,6 @@
 
 namespace rocksdb {
 
-const uint8_t kMaxVarint32Length = 6u;
-
 // Iterator to iterate IndexedTable
 class RtreeTableIterator : public InternalIterator {
  public:

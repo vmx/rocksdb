@@ -304,6 +304,19 @@ class SkipListMbbRep : public SkipListRep {
         override {
       query_mbb_ = reinterpret_cast<const double*>(internal_key.data());
       SkipListRep::Iterator::Seek(internal_key, memtable_key);
+
+      if (Valid()) {
+        rocksdb::Slice key_slice = rocksdb::GetLengthPrefixedSlice(key());
+        const double* mbb = reinterpret_cast<const double*>(key_slice.data());
+        // The `- 8` is the sequence number and type postfix
+        const uint8_t dimensions =
+            ((key_slice.size() - 8) / sizeof(double)) / 2;
+
+        // Try next key if it doesn't intersect
+        if (!RtreeUtil::IntersectMbb(query_mbb_, mbb, dimensions)) {
+          Next();
+        }
+      }
     }
 
     virtual void SeekToFirst() override {

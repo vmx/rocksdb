@@ -32,6 +32,7 @@
 #include "rocksdb/table.h"
 #include "rocksdb/rate_limiter.h"
 #include "rocksdb/utilities/backupable_db.h"
+#include "table/rtree_table_util.h"
 #include "utilities/merge_operators.h"
 
 using rocksdb::Cache;
@@ -63,6 +64,7 @@ using rocksdb::NewLRUCache;
 using rocksdb::Options;
 using rocksdb::BlockBasedTableOptions;
 using rocksdb::CuckooTableOptions;
+using rocksdb::RtreeTableOptions;
 using rocksdb::RandomAccessFile;
 using rocksdb::Range;
 using rocksdb::ReadOptions;
@@ -109,6 +111,7 @@ struct rocksdb_compactoptions_t {
 };
 struct rocksdb_block_based_table_options_t  { BlockBasedTableOptions rep; };
 struct rocksdb_cuckoo_table_options_t  { CuckooTableOptions rep; };
+struct rocksdb_rtree_table_options_t  { RtreeTableOptions rep; };
 struct rocksdb_seqfile_t         { SequentialFile*   rep; };
 struct rocksdb_randomfile_t      { RandomAccessFile* rep; };
 struct rocksdb_writablefile_t    { WritableFile*     rep; };
@@ -1428,6 +1431,36 @@ void rocksdb_options_set_cuckoo_table_factory(
 }
 
 
+rocksdb_rtree_table_options_t*
+rocksdb_rtree_options_create() {
+  return new rocksdb_rtree_table_options_t;
+}
+
+void rocksdb_rtree_options_destroy(
+    rocksdb_rtree_table_options_t* options) {
+  delete options;
+}
+
+void rocksdb_rtree_options_set_dimensions(
+    rocksdb_rtree_table_options_t* options, uint8_t v) {
+  options->rep.dimensions = v;
+}
+
+void rocksdb_rtree_options_set_block_size(
+    rocksdb_rtree_table_options_t* options, size_t v) {
+  options->rep.block_size = v;
+}
+
+void rocksdb_options_set_rtree_table_factory(
+    rocksdb_options_t *opt,
+    rocksdb_rtree_table_options_t* table_options) {
+  if (table_options) {
+    opt->rep.table_factory.reset(
+        rocksdb::NewRtreeTableFactory(table_options->rep));
+  }
+}
+
+
 rocksdb_options_t* rocksdb_options_create() {
   return new rocksdb_options_t;
 }
@@ -1853,6 +1886,10 @@ void rocksdb_options_set_memtable_prefix_bloom_size_ratio(
   opt->rep.memtable_prefix_bloom_size_ratio = v;
 }
 
+void rocksdb_options_set_memtable_skip_list_mbb(rocksdb_options_t *opt) {
+  opt->rep.memtable_factory.reset(new rocksdb::SkipListMbbFactory);
+}
+
 void rocksdb_options_set_memtable_huge_page_size(rocksdb_options_t* opt,
                                                  size_t v) {
   opt->rep.memtable_huge_page_size = v;
@@ -2049,6 +2086,27 @@ rocksdb_comparator_t* rocksdb_comparator_create(
 
 void rocksdb_comparator_destroy(rocksdb_comparator_t* cmp) {
   delete cmp;
+}
+
+static void lowx_comparator_destroy(void* arg) {}
+static int lowx_comparator_compare(void* arg,
+                                   const char* a,
+                                   size_t alen,
+                                   const char* b,
+                                   size_t blen) {
+  const uint8_t dimensions = (alen / sizeof(double)) / 2;
+  return rocksdb::RtreeUtil::LowxComparatorCompare((double *)a,
+                                                   (double *)b,
+                                                   dimensions);
+}
+static const char* lowx_comparator_name(void *arg) {
+  return rocksdb::RtreeUtil::LowxComparatorName();
+}
+rocksdb_comparator_t* rocksdb_comparator_lowx_create() {
+  return rocksdb_comparator_create(NULL,
+                                   lowx_comparator_destroy,
+                                   lowx_comparator_compare,
+                                   lowx_comparator_name);
 }
 
 rocksdb_filterpolicy_t* rocksdb_filterpolicy_create(

@@ -30,6 +30,13 @@ class RtreeUtil {
   static bool IntersectMbb(const double* aa,
                            const double* bb,
                            uint8_t dimensions);
+
+  // These comparator name and compare function are used for the C and C++
+  // based comparator.
+  static const char* LowxComparatorName() { return "rocksdb.LowxComparator"; };
+  static int LowxComparatorCompare(const double* aa,
+                                   const double* bb,
+                                   uint8_t dimensions);
  private:
   // It's not allowed to create an instance of `RtreeUtil`
   RtreeUtil() {}

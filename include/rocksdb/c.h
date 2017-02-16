@@ -95,6 +95,8 @@ typedef struct rocksdb_block_based_table_options_t
     rocksdb_block_based_table_options_t;
 typedef struct rocksdb_cuckoo_table_options_t
     rocksdb_cuckoo_table_options_t;
+typedef struct rocksdb_rtree_table_options_t
+    rocksdb_rtree_table_options_t;
 typedef struct rocksdb_randomfile_t      rocksdb_randomfile_t;
 typedef struct rocksdb_readoptions_t     rocksdb_readoptions_t;
 typedef struct rocksdb_seqfile_t         rocksdb_seqfile_t;
@@ -504,6 +506,19 @@ extern ROCKSDB_LIBRARY_API void rocksdb_cuckoo_options_set_use_module_hash(
 extern ROCKSDB_LIBRARY_API void rocksdb_options_set_cuckoo_table_factory(
     rocksdb_options_t* opt, rocksdb_cuckoo_table_options_t* table_options);
 
+/* R-tree table options */
+
+extern ROCKSDB_LIBRARY_API rocksdb_rtree_table_options_t*
+rocksdb_rtree_options_create();
+extern ROCKSDB_LIBRARY_API void rocksdb_rtree_options_destroy(
+    rocksdb_rtree_table_options_t* options);
+extern ROCKSDB_LIBRARY_API void rocksdb_rtree_options_set_dimensions(
+    rocksdb_rtree_table_options_t* options, uint8_t v);
+extern ROCKSDB_LIBRARY_API void rocksdb_rtree_options_set_block_size(
+    rocksdb_rtree_table_options_t* options, size_t v);
+extern ROCKSDB_LIBRARY_API void rocksdb_options_set_rtree_table_factory(
+    rocksdb_options_t* opt, rocksdb_rtree_table_options_t* table_options);
+
 /* Options */
 
 extern ROCKSDB_LIBRARY_API rocksdb_options_t* rocksdb_options_create();
@@ -686,6 +701,8 @@ extern ROCKSDB_LIBRARY_API void rocksdb_options_set_memtable_vector_rep(
     rocksdb_options_t*);
 extern ROCKSDB_LIBRARY_API void rocksdb_options_set_memtable_prefix_bloom_size_ratio(
     rocksdb_options_t*, double);
+extern ROCKSDB_LIBRARY_API void rocksdb_options_set_memtable_skip_list_mbb(
+    rocksdb_options_t*);
 extern ROCKSDB_LIBRARY_API void rocksdb_options_set_max_compaction_bytes(
     rocksdb_options_t*, uint64_t);
 extern ROCKSDB_LIBRARY_API void rocksdb_options_set_hash_skip_list_rep(
@@ -800,6 +817,10 @@ extern ROCKSDB_LIBRARY_API rocksdb_comparator_t* rocksdb_comparator_create(
     const char* (*name)(void*));
 extern ROCKSDB_LIBRARY_API void rocksdb_comparator_destroy(
     rocksdb_comparator_t*);
+
+// C-API version of the LowxComparator
+extern ROCKSDB_LIBRARY_API rocksdb_comparator_t*
+rocksdb_comparator_lowx_create();
 
 /* Filter policy */
 

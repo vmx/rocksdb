@@ -77,11 +77,26 @@ bool RtreeUtil::IntersectMbb(
   return true;
 }
 
+int RtreeUtil::LowxComparatorCompare(const double* aa,
+                                     const double* bb,
+                                     uint8_t dimensions) {
+  // Loop through the minimim values only
+  for (size_t ii = 0; ii < dimensions ; ii++) {
+    if (aa[ii * 2] < bb[ii * 2]) {
+      return -1;
+    } else if (aa[ii * 2] > bb[ii * 2]) {
+      return 1;
+    }
+    // Continue looping if aa[ii * 2] == bb[ii * 2]
+  }
+  return 0;
+}
+
 namespace {
 class LowxComparatorImpl : public rocksdb::Comparator {
  public:
   const char* Name() const {
-    return "rocksdb.LowxComparator";
+    return RtreeUtil::LowxComparatorName();
   }
 
   int Compare(const rocksdb::Slice& slice_aa, const rocksdb::Slice& slice_bb) const {
@@ -91,16 +106,7 @@ class LowxComparatorImpl : public rocksdb::Comparator {
     double* bb = (double*)slice_bb.data();
     const uint8_t dimensions = (slice_aa.size() / sizeof(double)) / 2;
 
-    // Loop through the minimim values only
-    for (size_t ii = 0; ii < dimensions ; ii++) {
-      if (aa[ii * 2] < bb[ii * 2]) {
-        return -1;
-      } else if (aa[ii * 2] > bb[ii * 2]) {
-        return 1;
-      }
-      // Continue looping if aa[ii * 2] == bb[ii * 2]
-    }
-    return 0;
+    return RtreeUtil::LowxComparatorCompare(aa, bb, dimensions);
   }
 
   void FindShortestSeparator(std::string* start,

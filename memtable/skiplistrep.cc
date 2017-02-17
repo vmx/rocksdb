@@ -281,11 +281,13 @@ class SkipListMbbRep : public SkipListRep {
     explicit Iterator(
         const InlineSkipList<const MemTableRep::KeyComparator&>* list)
         : SkipListRep::Iterator(list),
-          query_mbb_(nullptr) {}
+          query_mbb_("") {}
 
     virtual void Next() override {
       SkipListRep::Iterator::Next();
       if (Valid()) {
+        const double* query_mbb = reinterpret_cast<const double*>(
+            query_mbb_.data());
         rocksdb::Slice internal_key = rocksdb::GetLengthPrefixedSlice(key());
         const double* mbb = reinterpret_cast<const double*>(
             internal_key.data());
@@ -294,7 +296,7 @@ class SkipListMbbRep : public SkipListRep {
             ((internal_key.size() - 8) / sizeof(double)) / 2;
 
         // Try next key if it doesn't intersect
-        if (!RtreeUtil::IntersectMbb(query_mbb_, mbb, dimensions)) {
+        if (!RtreeUtil::IntersectMbb(query_mbb, mbb, dimensions)) {
           Next();
         }
       }
@@ -302,10 +304,12 @@ class SkipListMbbRep : public SkipListRep {
 
     virtual void Seek(const Slice& internal_key, const char *memtable_key)
         override {
-      query_mbb_ = reinterpret_cast<const double*>(internal_key.data());
+      query_mbb_ = std::string(internal_key.data(), internal_key.size());
       SkipListRep::Iterator::Seek(internal_key, memtable_key);
 
       if (Valid()) {
+        const double* query_mbb = reinterpret_cast<const double*>(
+            query_mbb_.data());
         rocksdb::Slice key_slice = rocksdb::GetLengthPrefixedSlice(key());
         const double* mbb = reinterpret_cast<const double*>(key_slice.data());
         // The `- 8` is the sequence number and type postfix
@@ -313,20 +317,20 @@ class SkipListMbbRep : public SkipListRep {
             ((key_slice.size() - 8) / sizeof(double)) / 2;
 
         // Try next key if it doesn't intersect
-        if (!RtreeUtil::IntersectMbb(query_mbb_, mbb, dimensions)) {
+        if (!RtreeUtil::IntersectMbb(query_mbb, mbb, dimensions)) {
           Next();
         }
       }
     }
 
     virtual void SeekToFirst() override {
-      query_mbb_ = nullptr;
+      query_mbb_.clear();
       SkipListRep::Iterator::SeekToFirst();
     }
 
    private:
     // The multi-dimensional bounding box the query was done with
-    const double* query_mbb_;
+    std::string query_mbb_;
   };
 
   virtual MemTableRep::Iterator* GetIterator(Arena* arena = nullptr) override {

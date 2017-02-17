@@ -36,8 +36,9 @@ int main() {
   std::unique_ptr <rocksdb::Iterator> it(db->NewIterator(rocksdb::ReadOptions()));
 
   // `Seek()` is used to specify the window query (bounding box search)
-  std::vector<double> query = {10, 11, 48, 49};
+  //std::vector<double> query = {10, 11, 48, 49};
   //std::vector<double> query = {-150, 0, 20, 40};
+  std::vector<double> query = {-180, 180, -90, 90};
   rocksdb::Slice query_slice = rocksdb::Slice(reinterpret_cast<const char*>(
       query.data()), sizeof(query[0]) * query.size());
   it->Seek(query_slice);

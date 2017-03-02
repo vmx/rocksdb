@@ -285,6 +285,28 @@ class SkipListMbbRep : public SkipListRep {
 
     virtual void Next() override {
       SkipListRep::Iterator::Next();
+      NextIfDisjoint();
+    }
+
+    virtual void Seek(const Slice& internal_key, const char *memtable_key)
+        override {
+      query_mbb_ = std::string(internal_key.data(), internal_key.size());
+      SkipListRep::Iterator::Seek(internal_key, memtable_key);
+      NextIfDisjoint();
+    }
+
+    virtual void SeekToFirst() override {
+      query_mbb_.clear();
+      SkipListRep::Iterator::SeekToFirst();
+    }
+
+   private:
+    // The multi-dimensional bounding box the query was done with
+    std::string query_mbb_;
+
+    // Skips the current key if it doesn't intersect with the query window
+    // bounding box and moves on to the next one.
+    void NextIfDisjoint() {
       if (Valid()) {
         const double* query_mbb = reinterpret_cast<const double*>(
             query_mbb_.data());
@@ -301,36 +323,6 @@ class SkipListMbbRep : public SkipListRep {
         }
       }
     }
-
-    virtual void Seek(const Slice& internal_key, const char *memtable_key)
-        override {
-      query_mbb_ = std::string(internal_key.data(), internal_key.size());
-      SkipListRep::Iterator::Seek(internal_key, memtable_key);
-
-      if (Valid()) {
-        const double* query_mbb = reinterpret_cast<const double*>(
-            query_mbb_.data());
-        rocksdb::Slice key_slice = rocksdb::GetLengthPrefixedSlice(key());
-        const double* mbb = reinterpret_cast<const double*>(key_slice.data());
-        // The `- 8` is the sequence number and type postfix
-        const uint8_t dimensions =
-            ((key_slice.size() - 8) / sizeof(double)) / 2;
-
-        // Try next key if it doesn't intersect
-        if (!RtreeUtil::IntersectMbb(query_mbb, mbb, dimensions)) {
-          Next();
-        }
-      }
-    }
-
-    virtual void SeekToFirst() override {
-      query_mbb_.clear();
-      SkipListRep::Iterator::SeekToFirst();
-    }
-
-   private:
-    // The multi-dimensional bounding box the query was done with
-    std::string query_mbb_;
   };
 
   virtual MemTableRep::Iterator* GetIterator(Arena* arena = nullptr) override {

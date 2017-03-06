@@ -284,7 +284,7 @@ class SkipListMbbRep : public SkipListRep {
         const InlineSkipList<const MemTableRep::KeyComparator&>* list,
         IteratorContext* context)
         : SkipListRep::Iterator(list),
-          query_mbb_("") {
+          query_mbb_() {
       if (context != nullptr) {
         query_mbb_ = static_cast<RtreeTableIteratorContext*>(
             context)->query_mbb;
@@ -303,23 +303,24 @@ class SkipListMbbRep : public SkipListRep {
 
    private:
     // The multi-dimensional bounding box the query was done with
-    std::string query_mbb_;
+    std::vector<std::pair<Variant, Variant>> query_mbb_;
 
     // Skips the current key if it doesn't intersect with the query window
     // bounding box and moves on to the next one.
     void NextIfDisjoint() {
       if (Valid()) {
-        const double* query_mbb = reinterpret_cast<const double*>(
-            query_mbb_.data());
         rocksdb::Slice internal_key = rocksdb::GetLengthPrefixedSlice(key());
-        const double* mbb = reinterpret_cast<const double*>(
-            internal_key.data());
-        // The `- 8` is the sequence number and type postfix
-        const uint8_t dimensions =
-            ((internal_key.size() - 8) / sizeof(double)) / 2;
+
+        // TODO vmx 2017-03-03: Get the types from the table options
+        std::vector<Variant::Type> types = {Variant::kDouble, Variant::kDouble};
+        // The key is an `InternalKey`. This means that the actual key (user key)
+        // is first and then some addition data appended. This means we can read
+        // the user key directly.
+        std::vector<std::pair<Variant, Variant>> mbb =
+            RtreeUtil::DeserializeKey(types, internal_key);
 
         // Try next key if it doesn't intersect
-        if (!RtreeUtil::IntersectMbb(query_mbb, mbb, dimensions)) {
+        if (!RtreeUtil::IntersectMbb(query_mbb_, mbb)) {
           Next();
         }
       }

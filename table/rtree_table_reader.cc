@@ -54,14 +54,14 @@ class RtreeTableIterator : public InternalIterator {
   uint64_t parent_offset_;
   // An uncompressed leaf node
   std::string leaf_;
-  // The offset within a uncompressed leaf
-  uint64_t offset_;
-  const double* key_;
+  // A slice that contains the `leaf_`
+  Slice leaf_slice_;
+  Slice key_;
   Slice value_;
   Status status_;
 
   // The bounding box of the window query
-  std::string query_mbb_;
+  std::vector<std::pair<Variant, Variant>> query_mbb_;
 
   // All the blocks (uncompressed) from the current position up to the
   // root node
@@ -193,8 +193,8 @@ RtreeTableIterator::RtreeTableIterator(
     : table_(table),
       parent_offset_(0),
       leaf_(""),
-      offset_(0),
-      query_mbb_(""),
+      leaf_slice_(Slice(leaf_)),
+      query_mbb_(),
       blocks_to_root_(std::vector<std::pair<Slice, std::string>>()) {
   if (context != nullptr) {
     query_mbb_ = static_cast<RtreeTableIteratorContext*>(context)->query_mbb;
@@ -207,12 +207,12 @@ RtreeTableIterator::~RtreeTableIterator() {
 void RtreeTableIterator::Reset() {
   parent_offset_ = 0;
   leaf_.clear();
-  offset_ = 0;
+  leaf_slice_ = Slice(leaf_);
   blocks_to_root_.clear();
 }
 
 bool RtreeTableIterator::Valid() const {
-  return !leaf_.empty() && offset_ <= leaf_.size();
+  return !leaf_.empty();
 }
 
 void RtreeTableIterator::SeekToFirst() {
@@ -238,19 +238,19 @@ void RtreeTableIterator::SeekForPrev(const Slice& target) {
 
 void RtreeTableIterator::Next() {
   // We are within a leaf node
-  while (!leaf_.empty() && offset_ < leaf_.size()) {
+  while (!leaf_.empty() && leaf_slice_.size() > 0) {
+    GetLengthPrefixedSlice(&leaf_slice_, &key_);
+    GetLengthPrefixedSlice(&leaf_slice_, &value_);
+
+    // TODO vmx 2017-03-03: Get the types from the table options
+    std::vector<Variant::Type> types = {Variant::kDouble, Variant::kDouble};
     // The key is an `InternalKey`. This means that the actual key (user key)
     // is first and then some addition data appended. This means we can read
     // the user key directly.
-    key_ = reinterpret_cast<const double*>(leaf_.data() + offset_);
-    const size_t key_size = table_->KeySize();
-    offset_ = reinterpret_cast<const char*>(key_) - leaf_.data() + key_size;
-    value_ = GetLengthPrefixedSlice(leaf_.data() + offset_);
-    offset_ = value_.data() - leaf_.data() + value_.size();
+    std::vector<std::pair<Variant, Variant>> key =
+        RtreeUtil::DeserializeKey(types, key_);
 
-    const bool intersect = RtreeUtil::IntersectMbb(key_,
-                                                   query_mbb_,
-                                                   table_->dimensions_);
+    const bool intersect = RtreeUtil::IntersectMbb(key, query_mbb_);
     // We have a matching key-value pair if the bounding boxes intersect
     // each other
     if (intersect) {
@@ -263,7 +263,7 @@ void RtreeTableIterator::Next() {
   // If there is no next leaf, it will return an empty string and hence
   // `Valid()` will be false
   leaf_ = NextLeaf();
-  offset_ = 0;
+  leaf_slice_ = Slice(leaf_);
   if (!leaf_.empty()) {
     Next();
   }
@@ -310,15 +310,17 @@ std::string RtreeTableIterator::NextLeaf() {
 
 BlockHandle RtreeTableIterator::GetNextChildHandle(Slice* inner) {
   while (inner->size() > 0) {
+    Slice key_slice;
+    GetLengthPrefixedSlice(inner, &key_slice);
+    // TODO vmx 2017-03-03: Get the types from the table options
+    std::vector<Variant::Type> types = {Variant::kDouble, Variant::kDouble};
     // The key is an `InternalKey`. This means that the actual key (user key)
     // is first and then some addition data appended. This means we can read
     // the user key directly.
-    const double* key = reinterpret_cast<const double*>(inner->data());
-    // Advance the slice as we read the key
-    inner->remove_prefix(table_->KeySize());
-    const bool intersect = RtreeUtil::IntersectMbb(key,
-                                                   query_mbb_,
-                                                   table_->dimensions_);
+    std::vector<std::pair<Variant, Variant>> key =
+        RtreeUtil::DeserializeKey(types, key_slice);
+
+    const bool intersect = RtreeUtil::IntersectMbb(key, query_mbb_);
     // If the key doesn't intersect with the search window (the bounding box
     // given by `Seek()`, try the next one.
     // If no target is given, just iterate over everything
@@ -343,7 +345,7 @@ void RtreeTableIterator::Prev() {
 
 Slice RtreeTableIterator::key() const {
   assert(Valid());
-  return Slice(reinterpret_cast<const char*>(key_), table_->KeySize());
+  return key_;
 }
 
 Slice RtreeTableIterator::value() const {

@@ -289,13 +289,13 @@ extern ROCKSDB_LIBRARY_API void rocksdb_release_snapshot(
     rocksdb_t* db, const rocksdb_snapshot_t* snapshot);
 
 
-extern ROCKSDB_LIBRARY_API
-rocksdb_iterator_context_t* rocksdb_create_rtree_iterator_context(
-    const char* data,
-    size_t size);
-
-extern ROCKSDB_LIBRARY_API void rocksdb_release_rtree_iterator_context(
-    rocksdb_iterator_context_t* ctx);
+//extern ROCKSDB_LIBRARY_API
+//rocksdb_iterator_context_t* rocksdb_create_rtree_iterator_context(
+//    const char* data,
+//    size_t size);
+//
+//extern ROCKSDB_LIBRARY_API void rocksdb_release_rtree_iterator_context(
+//    rocksdb_iterator_context_t* ctx);
 
 /* Returns NULL if property name is unknown.
    Else returns a pointer to a malloc()-ed null-terminated value. */

@@ -10,14 +10,180 @@
 
 namespace rocksdb {
 
-std::string RtreeUtil::EncodeKey(std::vector<double>& mbb) {
-  Slice slice = Slice(reinterpret_cast<const char*>(mbb.data()),
-                      sizeof(mbb[0]) * mbb.size());
+
+void Variant::Init(const Variant& v, Data& d) {
+  switch (v.type_) {
+    case kNull:
+      break;
+    case kBool:
+      d.b = v.data_.b;
+      break;
+    case kInt:
+      d.i = v.data_.i;
+      break;
+    case kDouble:
+      d.d = v.data_.d;
+      break;
+    case kString:
+      new (d.s) std::string(*GetStringPtr(v.data_));
+      break;
+    default:
+      assert(false);
+  }
+}
+
+Variant& Variant::operator=(const Variant& v) {
+  // Construct first a temp so exception from a string ctor
+  // does not change this object
+  Data tmp;
+  Init(v, tmp);
+
+  Type thisType = type_;
+  // Boils down to copying bits so safe
+  std::swap(tmp, data_);
+  type_ = v.type_;
+
+  Destroy(thisType, tmp);
+
+  return *this;
+}
+
+Variant& Variant::operator=(Variant&& rhs) {
+  Destroy(type_, data_);
+  if (rhs.type_ == kString) {
+    new (data_.s) std::string(std::move(*GetStringPtr(rhs.data_)));
+  } else {
+    data_ = rhs.data_;
+  }
+  type_ = rhs.type_;
+  rhs.type_ = kNull;
+  return *this;
+}
+
+
+bool Variant::operator==(const Variant& rhs) const {
+  if (type_ != rhs.type_) {
+    return false;
+  }
+
+  switch (type_) {
+    case kNull:
+      return true;
+    case kBool:
+      return data_.b == rhs.data_.b;
+    case kInt:
+      return data_.i == rhs.data_.i;
+    case kDouble:
+      return data_.d == rhs.data_.d;
+    case kString:
+      return *GetStringPtr(data_) == *GetStringPtr(rhs.data_);
+    default:
+      assert(false);
+  }
+  // it will never reach here, but otherwise the compiler complains
+  return false;
+}
+
+
+bool Variant::operator<(const Variant& rhs) const {
+  if (type_ != rhs.type_) {
+    return false;
+  }
+
+  switch (type_) {
+    case kNull:
+      return true;
+    case kBool:
+      return data_.b < rhs.data_.b;
+    case kInt:
+      return data_.i < rhs.data_.i;
+    case kDouble:
+      return data_.d < rhs.data_.d;
+    case kString:
+      return *GetStringPtr(data_) < *GetStringPtr(rhs.data_);
+    default:
+      assert(false);
+  }
+  // it will never reach here, but otherwise the compiler complains
+  return false;
+}
+
+bool Variant::operator>(const Variant& rhs) const {
+  if (type_ != rhs.type_) {
+    return false;
+  }
+
+  switch (type_) {
+    case kNull:
+      return true;
+    case kBool:
+      return data_.b > rhs.data_.b;
+    case kInt:
+      return data_.i > rhs.data_.i;
+    case kDouble:
+      return data_.d > rhs.data_.d;
+    case kString:
+      return *GetStringPtr(data_) > *GetStringPtr(rhs.data_);
+    default:
+      assert(false);
+  }
+  // it will never reach here, but otherwise the compiler complains
+  return false;
+}
+
+std::string RtreeUtil::EncodeKey(std::vector<std::pair<Variant, Variant>>& mbb) {
+  std::string serialized;
+  for (auto dimension: mbb) {
+    double dd;
+    switch (dimension.first.type()) {
+      case Variant::kDouble:
+        //serialized.append(reinterpret_cast<const char*>(&(dimension.first.get_double())),
+        dd = dimension.first.get_double();
+        serialized.append(reinterpret_cast<const char*>(&dd), sizeof(double));
+        //serialized.append(dimension.first.get_double(),
+        //                  sizeof(double));
+        //serialized.append(reinterpret_cast<const char*>(&(dimension.second.get_double())),
+        dd = dimension.second.get_double();
+        serialized.append(reinterpret_cast<const char*>(&dd), sizeof(double));
+        break;
+      case Variant::kNull:
+      case Variant::kBool:
+      case Variant::kInt:
+      case Variant::kString:
+      default:
+        // TODO vmx 2017-03-03: Handle other cases
+        break;
+    }
+  }
+  Slice slice = Slice(serialized);
   // NOTE vmx 2017-02-01: Use the internal key representation for consistency
   // across inner and leaf nodes
   InternalKey ikey;
   ikey.SetMaxPossibleForUserKey(slice);
   return ikey.Encode().ToString();
+}
+
+std::vector<std::pair<Variant, Variant>> RtreeUtil::EnclosingMbb(
+    const std::vector<std::pair<Variant, Variant>> aa,
+    const std::vector<std::pair<Variant, Variant>> bb) {
+  std::vector<std::pair<Variant, Variant>> enclosing;
+
+  if (aa.empty()) {
+    enclosing = bb;
+  } else if (bb.empty()) {
+    enclosing = aa;
+  } else {
+    assert(aa.size() == bb.size());
+    enclosing.reserve(aa.size());
+    for (size_t ii = 0; ii < aa.size(); ii++) {
+      Variant min = aa[ii].first < bb[ii].first ?
+                                   aa[ii].first : bb[ii].first;
+      Variant max = aa[ii].second > bb[ii].second ?
+          aa[ii].second : bb[ii].second;
+      enclosing.push_back(std::make_pair(min, max));
+    }
+  }
+  return enclosing;
 }
 
 std::vector<double> RtreeUtil::EnclosingMbb(
@@ -43,6 +209,26 @@ std::vector<double> RtreeUtil::EnclosingMbb(
     }
   }
   return enclosing;
+}
+
+bool RtreeUtil::IntersectMbb(
+    const std::vector<std::pair<Variant, Variant>> aa,
+    const std::vector<std::pair<Variant, Variant>> bb) {
+  // Two bounding boxes are considered interseting if one of them isn't
+  // defined. This way a tablescan returning all the data is easily
+  // possible
+  if (aa.empty() || bb.empty()) {
+    return true;
+  }
+  assert(aa.size() == bb.size());
+  // If the bounding boxes don't intersect in one dimension, they won't
+  // intersect at all, hence we can return early.
+  for (size_t ii = 0; ii < aa.size(); ii++) {
+    if(aa[ii].first > bb[ii].second || bb[ii].first > aa[ii].second) {
+      return false;
+    }
+  }
+  return true;
 }
 
 bool RtreeUtil::IntersectMbb(
@@ -124,6 +310,54 @@ class LowxComparatorImpl : public rocksdb::Comparator {
 const Comparator* LowxComparator() {
   static LowxComparatorImpl lowx;
   return &lowx;
+}
+
+const std::string RtreeUtil::SerializeTypes(
+    const std::vector<Variant>& types) {
+  std::string serialized;
+  for (auto vv: types) {
+    serialized.push_back(static_cast<char>(vv.type()));
+  }
+  return serialized;
+}
+
+const std::vector<Variant::Type> RtreeUtil::DeserializeTypes(
+    const std::string serialized) {
+  std::vector<Variant::Type> types;
+  for(const char& type: serialized) {
+    types.push_back(static_cast<Variant::Type>(type));
+  }
+  return types;
+}
+
+const std::vector<std::pair<Variant, Variant>> RtreeUtil::DeserializeKey(
+    const std::vector<Variant::Type> types,
+    const Slice& key_slice) {
+  std::vector<std::pair<Variant, Variant>> deserialized;
+  double dd_min;
+  double dd_max;
+  // Create a mutable version of the key slice
+  Slice key = Slice(key_slice);
+  for (const Variant::Type& tt: types) {
+    switch(tt) {
+      case Variant::kDouble:
+        dd_min = *reinterpret_cast<const double*>(key.data());
+        key.remove_prefix(sizeof(double));
+        dd_max = *reinterpret_cast<const double*>(key.data());
+        key.remove_prefix(sizeof(double));
+        deserialized.push_back(std::make_pair(Variant(dd_min),
+                                              Variant(dd_max)));
+        break;
+      case Variant::kNull:
+      case Variant::kBool:
+      case Variant::kInt:
+      case Variant::kString:
+      default:
+        // TODO vmx 2017-03-03: Handle other cases
+        break;
+    }
+  }
+  return deserialized;
 }
 
 }  // namespace rocksdb

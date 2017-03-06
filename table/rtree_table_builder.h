@@ -11,6 +11,7 @@
 #include "rocksdb/status.h"
 #include "rocksdb/table_properties.h"
 #include "table/table_builder.h"
+#include "table/rtree_table_util.h"
 #include "util/arena.h"
 
 namespace rocksdb {
@@ -60,7 +61,7 @@ class RtreeLeafBuilder {
 
   // The key that will be used by the parent node to point to its children
   //const double* parent_key_;
-  std::vector<double> parent_key_;
+  std::vector<std::pair<Variant, Variant>> parent_key_;
   uint8_t dimensions_;
 
   // No copying allowed

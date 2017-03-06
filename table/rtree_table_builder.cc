@@ -4,7 +4,6 @@
 //  of patent rights can be found in the PATENTS file in the same directory.
 
 #include "table/rtree_table_builder.h"
-#include "table/rtree_table_util.h"
 
 #include <assert.h>
 
@@ -34,19 +33,23 @@ void RtreeLeafBuilder::Reset() {
 }
 
 // The data within the block is:
-// key (fixed size)| value size | value
+// key size | key | value size | value
 void RtreeLeafBuilder::Add(const Slice& key, const Slice& value) {
   assert(!finished_);
 
-  parent_key_ = RtreeUtil::EnclosingMbb(
-      parent_key_.empty() ? nullptr : parent_key_.data(),
-      reinterpret_cast<const double*>(key.data()),
-      dimensions_);
+  // Decode the key into its parts to calculate the enclosing bounding box
+  // of it
+  // TODO vmx 2017-03-03: Get the types from the table options
+  std::vector<Variant::Type> types = {Variant::kDouble, Variant::kDouble};
+  // Deserializing also works with internal keys as there is only additional data *after* the
+  // actual key.
+  std::vector<std::pair<Variant, Variant>> deserialized = RtreeUtil::DeserializeKey(types, key);
+
+  parent_key_ = RtreeUtil::EnclosingMbb(parent_key_, deserialized);
 
   // We need to store the internal key as that's expected for further
   // operations within RocksDB
-  // The internal key is the key size + 8 byte;
-  buffer_.append(key.data(), key.size());
+  PutLengthPrefixedSlice(&buffer_, key);
   PutLengthPrefixedSlice(&buffer_, value);
 }
 
@@ -71,12 +74,12 @@ void RtreeInnerBuilder::Reset() {
 
 // The data within the block is a list of enclosing bounding boxed together
 // with the handles:
-// internal key containing the bounding box | data offset | data size | ...
+// key size | internal key containing the bounding box | data offset | data size | ...
 void RtreeInnerBuilder::Add(const Slice& key,
                             const BlockHandle& block_handle) {
   assert(!finished_);
 
-  buffer_.append(key.data(), key.size());
+  PutLengthPrefixedSlice(&buffer_, key);
   PutFixed64(&buffer_, block_handle.offset());
   PutFixed64(&buffer_, block_handle.size());
 }
@@ -298,7 +301,7 @@ Status RtreeTableBuilder::BuildTree(const Slice& block_contents,
                                     BlockHandle* block_handle) {
   std::string parents;
   // The key that just got read
-  const double* key;
+  std::vector<std::pair<Variant, Variant>> key;
   // Create a non const version of the slice
   Slice contents = Slice(block_contents);
   // The offset before the last compression
@@ -309,8 +312,7 @@ Status RtreeTableBuilder::BuildTree(const Slice& block_contents,
   // Have a temproary string we can use as a storage for a Slice
   std::string tmp_contents;
   // The key that will be used by the parent node to point to its children
-  std::vector<double> parent_key;
-  parent_key.reserve(table_options_.dimensions * 2);
+  std::vector<std::pair<Variant, Variant>> parent_key;
 
   // Iterate through the whole block and write it in chunks (compressed)
   // to disk. Each chunk will be a node a parent will point to.
@@ -318,19 +320,18 @@ Status RtreeTableBuilder::BuildTree(const Slice& block_contents,
     // The key is an `InternalKey`. This means that the actual key (user key)
     // is first and then some addition data appended. This means we can read
     // the user key directly.
-    key = reinterpret_cast<const double*>(contents.data());
-    parent_key = RtreeUtil::EnclosingMbb(
-        parent_key.empty() ? nullptr : parent_key.data(),
-        key,
-        table_options_.dimensions);
+    //key = reinterpret_cast<const double*>(contents.data());
+    // TODO vmx 2017-03-03: Get the types from the table options
+    std::vector<Variant::Type> types = {Variant::kDouble, Variant::kDouble};
+    // TODO vmx 2017-03-06: Here the key gets deserialized. A possible
+    // optimization is to not having it serialized before flushing it to disk
+    Slice key_slice;
+    GetLengthPrefixedSlice(&contents, &key_slice);
+    key = RtreeUtil::DeserializeKey(types, key_slice);
+    parent_key = RtreeUtil::EnclosingMbb(parent_key, key);
 
-    // The total size of the key
-    const size_t total_key_size = kMinInternalKeySize +
-        table_options_.dimensions * 2 * sizeof(double);
-    // The block handle offset and size
     const size_t handle_size = 2 * sizeof(uint64_t);
-    // Advance the slice for the key and handle
-    contents.remove_prefix(total_key_size + handle_size);
+    contents.remove_prefix(handle_size);
 
     data_size = contents.data() - prev_offset;
     // Write block if a certain threshold is reached (4KB by default) or
@@ -350,7 +351,7 @@ Status RtreeTableBuilder::BuildTree(const Slice& block_contents,
 
       // Add the key and the handle to the parents' level
       std::string encoded_key = RtreeUtil::EncodeKey(parent_key);
-      parents.append(encoded_key.data(), encoded_key.size());
+      PutLengthPrefixedSlice(&parents, Slice(encoded_key));
       PutFixed64(&parents, block_handle->offset());
       PutFixed64(&parents, block_handle->size());
 

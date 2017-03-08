@@ -779,7 +779,8 @@ ReadOptions::ReadOptions()
       pin_data(false),
       background_purge_on_iterator_cleanup(false),
       readahead_size(0),
-      ignore_range_deletions(false) {
+      ignore_range_deletions(false),
+      iterator_context(nullptr) {
   XFUNC_TEST("", "managed_options", managed_options, xf_manage_options,
              reinterpret_cast<ReadOptions*>(this));
 }
@@ -797,7 +798,8 @@ ReadOptions::ReadOptions(bool cksum, bool cache)
       pin_data(false),
       background_purge_on_iterator_cleanup(false),
       readahead_size(0),
-      ignore_range_deletions(false) {
+      ignore_range_deletions(false),
+      iterator_context(nullptr) {
   XFUNC_TEST("", "managed_options", managed_options, xf_manage_options,
              reinterpret_cast<ReadOptions*>(this));
 }

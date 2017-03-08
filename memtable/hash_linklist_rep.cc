@@ -182,10 +182,13 @@ class HashLinkListRep : public MemTableRep {
 
   virtual ~HashLinkListRep();
 
-  virtual MemTableRep::Iterator* GetIterator(Arena* arena = nullptr) override;
+  virtual MemTableRep::Iterator* GetIterator(
+      IteratorContext* iterator_context,
+      Arena* arena = nullptr) override;
 
   virtual MemTableRep::Iterator* GetDynamicPrefixIterator(
-       Arena* arena = nullptr) override;
+      IteratorContext* iterator_context = nullptr,
+      Arena* arena = nullptr) override;
 
  private:
   friend class DynamicIterator;
@@ -743,7 +746,9 @@ void HashLinkListRep::Get(const LookupKey& k, void* callback_args,
   }
 }
 
-MemTableRep::Iterator* HashLinkListRep::GetIterator(Arena* alloc_arena) {
+MemTableRep::Iterator* HashLinkListRep::GetIterator(
+    IteratorContext* iterator_context,
+    Arena* alloc_arena) {
   // allocate a new arena of similar size to the one currently in use
   Arena* new_arena = new Arena(allocator_->BlockSize());
   auto list = new MemtableSkipList(compare_, new_arena);
@@ -790,6 +795,7 @@ MemTableRep::Iterator* HashLinkListRep::GetIterator(Arena* alloc_arena) {
 }
 
 MemTableRep::Iterator* HashLinkListRep::GetDynamicPrefixIterator(
+    IteratorContext* iterator_context,
     Arena* alloc_arena) {
   if (alloc_arena == nullptr) {
     return new DynamicIterator(*this);

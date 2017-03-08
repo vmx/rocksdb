@@ -40,9 +40,12 @@ class HashSkipListRep : public MemTableRep {
 
   virtual ~HashSkipListRep();
 
-  virtual MemTableRep::Iterator* GetIterator(Arena* arena = nullptr) override;
+  virtual MemTableRep::Iterator* GetIterator(
+      IteratorContext* iterator_context,
+      Arena* arena = nullptr) override;
 
   virtual MemTableRep::Iterator* GetDynamicPrefixIterator(
+      IteratorContext* iterator_context = nullptr,
       Arena* arena = nullptr) override;
 
  private:
@@ -301,7 +304,9 @@ void HashSkipListRep::Get(const LookupKey& k, void* callback_args,
   }
 }
 
-MemTableRep::Iterator* HashSkipListRep::GetIterator(Arena* arena) {
+MemTableRep::Iterator* HashSkipListRep::GetIterator(
+    IteratorContext* iterator_context,
+    Arena* arena) {
   // allocate a new arena of similar size to the one currently in use
   Arena* new_arena = new Arena(allocator_->BlockSize());
   auto list = new Bucket(compare_, new_arena);
@@ -322,7 +327,9 @@ MemTableRep::Iterator* HashSkipListRep::GetIterator(Arena* arena) {
   }
 }
 
-MemTableRep::Iterator* HashSkipListRep::GetDynamicPrefixIterator(Arena* arena) {
+MemTableRep::Iterator* HashSkipListRep::GetDynamicPrefixIterator(
+    IteratorContext* iterator_context,
+    Arena* arena) {
   if (arena == nullptr) {
     return new DynamicIterator(*this);
   } else {

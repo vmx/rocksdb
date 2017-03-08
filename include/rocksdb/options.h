@@ -1437,6 +1437,10 @@ enum ReadTier {
                           // Get and MultiGet and does not support iterators.
 };
 
+// This is an opqaue struct that can be used by iterators to store some
+// context.
+struct IteratorContext {};
+
 // Options that control read operations
 struct ReadOptions {
   // If true, all data read from underlying storage will be
@@ -1553,6 +1557,9 @@ struct ReadOptions {
   // read performance in DBs with many range deletions.
   // Default: false
   bool ignore_range_deletions;
+
+  // Some opaque context that gets passed into the iterator
+  IteratorContext* iterator_context;
 
   ReadOptions();
   ReadOptions(bool cksum, bool cache);

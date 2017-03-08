@@ -97,7 +97,9 @@ class VectorRep : public MemTableRep {
   };
 
   // Return an iterator over the keys in this representation.
-  virtual MemTableRep::Iterator* GetIterator(Arena* arena) override;
+  virtual MemTableRep::Iterator* GetIterator(
+      IteratorContext* iterator_context,
+      Arena* arena) override;
 
  private:
   friend class Iterator;
@@ -267,7 +269,9 @@ void VectorRep::Get(const LookupKey& k, void* callback_args,
   }
 }
 
-MemTableRep::Iterator* VectorRep::GetIterator(Arena* arena) {
+MemTableRep::Iterator* VectorRep::GetIterator(
+    IteratorContext* iterator_context,
+    Arena* arena) {
   char* mem = nullptr;
   if (arena != nullptr) {
     mem = arena->AllocateAligned(sizeof(Iterator));

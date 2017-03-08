@@ -48,6 +48,7 @@ class LookupKey;
 class Slice;
 class SliceTransform;
 class Logger;
+struct IteratorContext;
 
 typedef void* KeyHandle;
 
@@ -183,7 +184,11 @@ class MemTableRep {
   //        When destroying the iterator, the caller will not call "delete"
   //        but Iterator::~Iterator() directly. The destructor needs to destroy
   //        all the states but those allocated in arena.
-  virtual Iterator* GetIterator(Arena* arena = nullptr) = 0;
+  // iterator_context: Some opaque context only the iterator itself knows
+  //                   about.
+  virtual Iterator* GetIterator(
+      IteratorContext* iterator_context,
+      Arena* arena = nullptr) = 0;
 
   // Return an iterator that has a special Seek semantics. The result of
   // a Seek might only include keys with the same prefix as the target key.
@@ -191,8 +196,16 @@ class MemTableRep {
   //        When destroying the iterator, the caller will not call "delete"
   //        but Iterator::~Iterator() directly. The destructor needs to destroy
   //        all the states but those allocated in arena.
-  virtual Iterator* GetDynamicPrefixIterator(Arena* arena = nullptr) {
-    return GetIterator(arena);
+  // iterator_context: Some opaque context only the iterator itself knows
+  //                   about. It is only set when the iterator is created
+  //                   through the public interface (which suppplies
+  //                   `ReadOptions`) which calls `MemTableIterator`. It's a
+  //                   `nullptr` when the iterator is created for internal
+  //                   purpose.
+  virtual Iterator* GetDynamicPrefixIterator(
+      IteratorContext* iterator_context = nullptr,
+      Arena* arena = nullptr) {
+    return GetIterator(iterator_context, arena);
   }
 
   // Return true if the current MemTableRep supports merge operator.

@@ -249,12 +249,15 @@ class MemTableIterator : public InternalIterator {
         arena_mode_(arena != nullptr),
         value_pinned_(!mem.GetMemTableOptions()->inplace_update_support) {
     if (use_range_del_table) {
-      iter_ = mem.range_del_table_->GetIterator(arena);
+      iter_ = mem.range_del_table_->GetIterator(read_options.iterator_context,
+                                                arena);
     } else if (prefix_extractor_ != nullptr && !read_options.total_order_seek) {
       bloom_ = mem.prefix_bloom_.get();
-      iter_ = mem.table_->GetDynamicPrefixIterator(arena);
+      iter_ = mem.table_->GetDynamicPrefixIterator(
+          read_options.iterator_context,
+          arena);
     } else {
-      iter_ = mem.table_->GetIterator(arena);
+      iter_ = mem.table_->GetIterator(read_options.iterator_context, arena);
     }
   }
 

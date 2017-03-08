@@ -180,7 +180,8 @@ class PartitionIndexReader : public IndexReader, public Cleanable {
 
   // return a two-level iterator: first level is on the partition index
   virtual InternalIterator* NewIterator(BlockIter* iter = nullptr,
-                                        bool dont_care = true) override {
+                                        bool dont_care = true,
+                                        IteratorContext* iterator_context = nullptr) override {
     // Filters are already checked before seeking the index
     const bool skip_filters = true;
     const bool is_index = true;
@@ -259,7 +260,8 @@ class BinarySearchIndexReader : public IndexReader {
   }
 
   virtual InternalIterator* NewIterator(BlockIter* iter = nullptr,
-                                        bool dont_care = true) override {
+                                        bool dont_care = true,
+                                        IteratorContext* iterator_context = nullptr) override {
     return index_block_->NewIterator(icomparator_, iter, true);
   }
 
@@ -362,7 +364,8 @@ class HashIndexReader : public IndexReader {
   }
 
   virtual InternalIterator* NewIterator(BlockIter* iter = nullptr,
-                                        bool total_order_seek = true) override {
+                                        bool total_order_seek = true,
+                                        IteratorContext* iterator_context = nullptr) override {
     return index_block_->NewIterator(icomparator_, iter, total_order_seek);
   }
 
@@ -1158,7 +1161,8 @@ InternalIterator* BlockBasedTable::NewIndexIterator(
   // index reader has already been pre-populated.
   if (rep_->index_reader) {
     return rep_->index_reader->NewIterator(
-        input_iter, read_options.total_order_seek);
+        input_iter, read_options.total_order_seek,
+        read_options.iterator_context);
   }
   // we have a pinned index block
   if (rep_->index_entry.IsSet()) {
@@ -1234,7 +1238,7 @@ InternalIterator* BlockBasedTable::NewIndexIterator(
 
   assert(cache_handle);
   auto* iter = index_reader->NewIterator(
-      input_iter, read_options.total_order_seek);
+      input_iter, read_options.total_order_seek, read_options.iterator_context);
 
   // the caller would like to take ownership of the index block
   // don't call RegisterCleanup() in this case, the caller will take care of it

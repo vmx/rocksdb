@@ -613,7 +613,8 @@ ReadOptions::ReadOptions()
       prefix_same_as_start(false),
       pin_data(false),
       background_purge_on_iterator_cleanup(false),
-      ignore_range_deletions(false) {}
+      ignore_range_deletions(false),
+      iterator_context(nullptr) {}
 
 ReadOptions::ReadOptions(bool cksum, bool cache)
     : snapshot(nullptr),
@@ -629,6 +630,7 @@ ReadOptions::ReadOptions(bool cksum, bool cache)
       prefix_same_as_start(false),
       pin_data(false),
       background_purge_on_iterator_cleanup(false),
-      ignore_range_deletions(false) {}
+      ignore_range_deletions(false),
+      iterator_context(nullptr) {}
 
 }  // namespace rocksdb

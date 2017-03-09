@@ -86,6 +86,8 @@ using rocksdb::RestoreOptions;
 using rocksdb::CompactRangeOptions;
 using rocksdb::RateLimiter;
 using rocksdb::NewGenericRateLimiter;
+using rocksdb::IteratorContext;
+using rocksdb::RtreeTableIteratorContext;
 
 using std::shared_ptr;
 
@@ -98,6 +100,7 @@ struct rocksdb_restore_options_t { RestoreOptions rep; };
 struct rocksdb_iterator_t        { Iterator*         rep; };
 struct rocksdb_writebatch_t      { WriteBatch        rep; };
 struct rocksdb_snapshot_t        { const Snapshot*   rep; };
+struct rocksdb_iterator_context_t { IteratorContext* rep; };
 struct rocksdb_flushoptions_t    { FlushOptions      rep; };
 struct rocksdb_fifo_compaction_options_t { CompactionOptionsFIFO rep; };
 struct rocksdb_readoptions_t {
@@ -886,6 +889,22 @@ void rocksdb_release_snapshot(
     const rocksdb_snapshot_t* snapshot) {
   db->rep->ReleaseSnapshot(snapshot->rep);
   delete snapshot;
+}
+
+rocksdb_iterator_context_t* rocksdb_create_rtree_iterator_context(
+    const char* data,
+    size_t size) {
+  rocksdb_iterator_context_t* result = new rocksdb_iterator_context_t;
+  RtreeTableIteratorContext* iterator_context = new RtreeTableIteratorContext();
+  iterator_context->query_mbb = std::string(data, size);
+  result->rep = iterator_context;
+  return result;
+}
+
+void rocksdb_release_rtree_iterator_context(
+    rocksdb_iterator_context_t* ctx) {
+  delete ctx->rep;
+  delete ctx;
 }
 
 char* rocksdb_property_value(
@@ -2251,6 +2270,11 @@ void rocksdb_readoptions_set_tailing(
 void rocksdb_readoptions_set_readahead_size(
     rocksdb_readoptions_t* opt, size_t v) {
   opt->rep.readahead_size = v;
+}
+
+void rocksdb_readoptions_set_iterator_context(
+    rocksdb_readoptions_t* opt, rocksdb_iterator_context_t* ctx) {
+  opt->rep.iterator_context = (ctx ? ctx->rep : nullptr);
 }
 
 rocksdb_writeoptions_t* rocksdb_writeoptions_create() {

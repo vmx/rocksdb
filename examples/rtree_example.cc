@@ -32,19 +32,20 @@ int main() {
       alameda_key.data()), sizeof(alameda_key[0]) * alameda_key.size());
   status = db->Put(rocksdb::WriteOptions(), alameda_slice, "alameda");
 
-  // The iterator works as usual
-  std::unique_ptr <rocksdb::Iterator> it(db->NewIterator(rocksdb::ReadOptions()));
-
-  // `Seek()` is used to specify the window query (bounding box search)
-  //std::vector<double> query = {10, 11, 48, 49};
+  // Specify the desired bounding box on the iterator
+  rocksdb::ReadOptions read_options;
+  rocksdb::RtreeTableIteratorContext iterator_context;
+  std::vector<double> query = {10, 11, 48, 49};
   //std::vector<double> query = {-150, 0, 20, 40};
-  std::vector<double> query = {-180, 180, -90, 90};
-  rocksdb::Slice query_slice = rocksdb::Slice(reinterpret_cast<const char*>(
-      query.data()), sizeof(query[0]) * query.size());
-  it->Seek(query_slice);
+  //std::vector<double> query = {-180, 180, -90, 90};
+  iterator_context.query_mbb = std::string(
+      reinterpret_cast<const char*>(query.data()),
+      sizeof(query[0]) * query.size());
+  read_options.iterator_context = &iterator_context;
+  std::unique_ptr <rocksdb::Iterator> it(db->NewIterator(read_options));
 
   // Iterate over the results and print the value
-  for (; it->Valid(); it->Next()) {
+  for (it->SeekToFirst(); it->Valid(); it->Next()) {
     std::cout << it->value().ToString() << std::endl;
   }
 

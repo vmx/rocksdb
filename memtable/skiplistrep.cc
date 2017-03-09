@@ -281,25 +281,24 @@ class SkipListMbbRep : public SkipListRep {
   class Iterator : public SkipListRep::Iterator {
    public:
     explicit Iterator(
-        const InlineSkipList<const MemTableRep::KeyComparator&>* list)
+        const InlineSkipList<const MemTableRep::KeyComparator&>* list,
+        IteratorContext* context)
         : SkipListRep::Iterator(list),
-          query_mbb_("") {}
+          query_mbb_("") {
+      if (context != nullptr) {
+        query_mbb_ = static_cast<RtreeTableIteratorContext*>(
+            context)->query_mbb;
+      }
+    }
 
     virtual void Next() override {
       SkipListRep::Iterator::Next();
       NextIfDisjoint();
     }
 
-    virtual void Seek(const Slice& internal_key, const char *memtable_key)
-        override {
-      query_mbb_ = std::string(internal_key.data(), internal_key.size());
-      SkipListRep::Iterator::Seek(internal_key, memtable_key);
-      NextIfDisjoint();
-    }
-
     virtual void SeekToFirst() override {
-      query_mbb_.clear();
       SkipListRep::Iterator::SeekToFirst();
+      NextIfDisjoint();
     }
 
    private:
@@ -328,19 +327,12 @@ class SkipListMbbRep : public SkipListRep {
   };
 
   virtual MemTableRep::Iterator* GetIterator(
-      Arena* arena = nullptr,
-      IteratorContext* iterator_context = nullptr) override {
-    if (lookahead_ > 0) {
-      void *mem =
-        arena ? arena->AllocateAligned(sizeof(SkipListMbbRep::LookaheadIterator))
-              : operator new(sizeof(SkipListMbbRep::LookaheadIterator));
-      return new (mem) SkipListMbbRep::LookaheadIterator(*this);
-    } else {
-      void *mem =
+      IteratorContext* iterator_context,
+      Arena* arena = nullptr) override {
+    void *mem =
         arena ? arena->AllocateAligned(sizeof(SkipListMbbRep::Iterator))
-              : operator new(sizeof(SkipListMbbRep::Iterator));
-      return new (mem) SkipListMbbRep::Iterator(&skip_list_);
-    }
+        : operator new(sizeof(SkipListMbbRep::Iterator));
+    return new (mem) SkipListMbbRep::Iterator(&skip_list_, iterator_context);
   }
 };
 }

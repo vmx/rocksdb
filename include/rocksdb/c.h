@@ -102,6 +102,7 @@ typedef struct rocksdb_readoptions_t     rocksdb_readoptions_t;
 typedef struct rocksdb_seqfile_t         rocksdb_seqfile_t;
 typedef struct rocksdb_slicetransform_t  rocksdb_slicetransform_t;
 typedef struct rocksdb_snapshot_t        rocksdb_snapshot_t;
+typedef struct rocksdb_iterator_context_t rocksdb_iterator_context_t;
 typedef struct rocksdb_writablefile_t    rocksdb_writablefile_t;
 typedef struct rocksdb_writebatch_t      rocksdb_writebatch_t;
 typedef struct rocksdb_writeoptions_t    rocksdb_writeoptions_t;
@@ -286,6 +287,15 @@ extern ROCKSDB_LIBRARY_API const rocksdb_snapshot_t* rocksdb_create_snapshot(
 
 extern ROCKSDB_LIBRARY_API void rocksdb_release_snapshot(
     rocksdb_t* db, const rocksdb_snapshot_t* snapshot);
+
+
+extern ROCKSDB_LIBRARY_API
+rocksdb_iterator_context_t* rocksdb_create_rtree_iterator_context(
+    const char* data,
+    size_t size);
+
+extern ROCKSDB_LIBRARY_API void rocksdb_release_rtree_iterator_context(
+    rocksdb_iterator_context_t* ctx);
 
 /* Returns NULL if property name is unknown.
    Else returns a pointer to a malloc()-ed null-terminated value. */
@@ -880,6 +890,8 @@ extern ROCKSDB_LIBRARY_API void rocksdb_readoptions_set_tailing(
     rocksdb_readoptions_t*, unsigned char);
 extern ROCKSDB_LIBRARY_API void rocksdb_readoptions_set_readahead_size(
     rocksdb_readoptions_t*, size_t);
+extern ROCKSDB_LIBRARY_API void rocksdb_readoptions_set_iterator_context(
+    rocksdb_readoptions_t*, rocksdb_iterator_context_t*);
 
 /* Write options */
 

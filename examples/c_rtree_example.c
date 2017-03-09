@@ -34,25 +34,30 @@ int main(int argc, char **argv) {
               alameda_value, strlen(alameda_value) + 1,
               &err);
 
-  // The iterator works as usual
+  // Specify the desired bounding box on the iterator
   rocksdb_readoptions_t *readoptions = rocksdb_readoptions_create();
-  rocksdb_iterator_t *iter = rocksdb_create_iterator(db, readoptions);
-
-  // `Seek()` is used to specify the window query (bounding box search)
   const double query[4] = {10, 11, 48, 49};
   //const double query[4] = {-150, 0, 20, 40};
-  rocksdb_iter_seek(iter, (const char *)query, 4 * sizeof(double));
+  //const double query[4] = {-180, 180, -90, 90};
+  rocksdb_iterator_context_t *iterator_context =
+      rocksdb_create_rtree_iterator_context((const char *)query,
+                                            4 * sizeof(double));
+  rocksdb_readoptions_set_iterator_context(readoptions, iterator_context);
+  rocksdb_iterator_t *iter = rocksdb_create_iterator(db, readoptions);
 
   // Iterate over the results and print the value
-  for (; rocksdb_iter_valid(iter); rocksdb_iter_next(iter)) {
+  for (rocksdb_iter_seek_to_first(iter);
+       rocksdb_iter_valid(iter);
+       rocksdb_iter_next(iter)) {
     size_t len;
     printf("%s\n", rocksdb_iter_value(iter, &len));
   }
 
   // Cleanup
   rocksdb_iter_destroy(iter);
-  rocksdb_writeoptions_destroy(writeoptions);
+  rocksdb_release_rtree_iterator_context(iterator_context);
   rocksdb_readoptions_destroy(readoptions);
+  rocksdb_writeoptions_destroy(writeoptions);
   rocksdb_comparator_destroy(comparator);
   rocksdb_rtree_options_destroy(table_options);
   rocksdb_options_destroy(options);

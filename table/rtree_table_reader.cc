@@ -23,7 +23,9 @@ namespace rocksdb {
 // Iterator to iterate IndexedTable
 class RtreeTableIterator : public InternalIterator {
  public:
-  explicit RtreeTableIterator(RtreeTableReader* table);
+  explicit RtreeTableIterator(
+      RtreeTableReader* table,
+      IteratorContext* context);
   ~RtreeTableIterator();
 
   bool Valid() const override;
@@ -57,12 +59,9 @@ class RtreeTableIterator : public InternalIterator {
   const double* key_;
   Slice value_;
   Status status_;
-  // A call to`Seek()` specifie the bounding box we want to query on, hence
-  // store that value within the iterator
-  // NOTE vmx 2017-01-23: It would be nicer if this could be Slice, but
-  // for a reason I know, this won't work as the memory will get changed
-  // somehow.
-  std::string target_;
+
+  // The bounding box of the window query
+  std::string query_mbb_;
 
   // All the blocks (uncompressed) from the current position up to the
   // root node
@@ -133,10 +132,10 @@ InternalIterator* RtreeTableReader::NewIterator(const ReadOptions& options,
                                                 Arena* arena,
                                                 bool skip_filters) {
   if (arena == nullptr) {
-    return new RtreeTableIterator(this);
+    return new RtreeTableIterator(this, options.iterator_context);
   } else {
     auto mem = arena->AllocateAligned(sizeof(RtreeTableIterator));
-    return new (mem) RtreeTableIterator(this);
+    return new (mem) RtreeTableIterator(this, options.iterator_context);
   }
 }
 
@@ -188,13 +187,18 @@ size_t RtreeTableReader::KeySize() const {
   return dimensions_ * 2 * sizeof(double) + kMinInternalKeySize;
 }
 
-RtreeTableIterator::RtreeTableIterator(RtreeTableReader* table)
+RtreeTableIterator::RtreeTableIterator(
+    RtreeTableReader* table,
+    IteratorContext* context)
     : table_(table),
       parent_offset_(0),
       leaf_(""),
       offset_(0),
-      target_(""),
+      query_mbb_(""),
       blocks_to_root_(std::vector<std::pair<Slice, std::string>>()) {
+  if (context != nullptr) {
+    query_mbb_ = static_cast<RtreeTableIteratorContext*>(context)->query_mbb;
+  }
 }
 
 RtreeTableIterator::~RtreeTableIterator() {
@@ -202,10 +206,9 @@ RtreeTableIterator::~RtreeTableIterator() {
 
 void RtreeTableIterator::Reset() {
   parent_offset_ = 0;
-  offset_ = 0;
   leaf_.clear();
+  offset_ = 0;
   blocks_to_root_.clear();
-  target_.clear();
 }
 
 bool RtreeTableIterator::Valid() const {
@@ -223,9 +226,8 @@ void RtreeTableIterator::SeekToLast() {
 }
 
 void RtreeTableIterator::Seek(const Slice& target) {
-  Reset();
-  target_ = std::string(target.data(), target.size());
-  Next();
+  assert(false);
+  status_ = Status::NotSupported("Seek() is not supported in RtreeTable");
 }
 
 void RtreeTableIterator::SeekForPrev(const Slice& target) {
@@ -247,7 +249,7 @@ void RtreeTableIterator::Next() {
     offset_ = value_.data() - leaf_.data() + value_.size();
 
     const bool intersect = RtreeUtil::IntersectMbb(key_,
-                                                   target_,
+                                                   query_mbb_,
                                                    table_->dimensions_);
     // We have a matching key-value pair if the bounding boxes intersect
     // each other
@@ -315,7 +317,7 @@ BlockHandle RtreeTableIterator::GetNextChildHandle(Slice* inner) {
     // Advance the slice as we read the key
     inner->remove_prefix(table_->KeySize());
     const bool intersect = RtreeUtil::IntersectMbb(key,
-                                                   target_,
+                                                   query_mbb_,
                                                    table_->dimensions_);
     // If the key doesn't intersect with the search window (the bounding box
     // given by `Seek()`, try the next one.

@@ -8,6 +8,7 @@
 #include <vector>
 
 #include "rocksdb/comparator.h"
+#include "rocksdb/options.h"
 
 namespace rocksdb {
 
@@ -45,5 +46,10 @@ class RtreeUtil {
 // A comparator that sorts the multi-dimensional bounding boxes by the
 // lower value of the first dimension.
 extern const Comparator* LowxComparator();
+
+struct RtreeTableIteratorContext: public IteratorContext {
+  std::string query_mbb;
+  RtreeTableIteratorContext(): query_mbb("") {}
+};
 
 }  // namespace rocksdb

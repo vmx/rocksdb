@@ -132,7 +132,11 @@ class RtreeUtil {
   // Deserialize a key (Slice) into a vector of Variants
   static const std::vector<std::pair<Variant, Variant>> DeserializeKey(
       const std::vector<Variant::Type> types,
-      const Slice& key);
+      const Slice& key_slice);
+  static void DeserializeKey(
+      const std::vector<Variant::Type> types,
+      const Slice& key_slice,
+      std::vector<std::pair<Variant, Variant>>& deserialized);
 private:
   // It's not allowed to create an instance of `RtreeUtil`
   RtreeUtil() {}

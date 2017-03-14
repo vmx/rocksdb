@@ -360,4 +360,33 @@ const std::vector<std::pair<Variant, Variant>> RtreeUtil::DeserializeKey(
   return deserialized;
 }
 
+void RtreeUtil::DeserializeKey(
+    const std::vector<Variant::Type> types,
+    const Slice& key_slice,
+    std::vector<std::pair<Variant, Variant>>& deserialized) {
+  double dd_min;
+  double dd_max;
+  // Create a mutable version of the key slice
+  Slice key = Slice(key_slice);
+  for (const Variant::Type& tt: types) {
+    switch(tt) {
+      case Variant::kDouble:
+        dd_min = *reinterpret_cast<const double*>(key.data());
+        key.remove_prefix(sizeof(double));
+        dd_max = *reinterpret_cast<const double*>(key.data());
+        key.remove_prefix(sizeof(double));
+        deserialized.push_back(std::make_pair(Variant(dd_min),
+                                              Variant(dd_max)));
+        break;
+      case Variant::kNull:
+      case Variant::kBool:
+      case Variant::kInt:
+      case Variant::kString:
+      default:
+        // TODO vmx 2017-03-03: Handle other cases
+        break;
+    }
+  }
+}
+
 }  // namespace rocksdb

@@ -63,6 +63,11 @@ class RtreeTableIterator : public InternalIterator {
   // The bounding box of the window query
   std::vector<std::pair<Variant, Variant>> query_mbb_;
 
+  // This acts as a buffer. For one iterator the size and shape of the key
+  // is the same, hence we can re-use the vector. This saves a lot of
+  // allocations
+  std::vector<std::pair<Variant, Variant>> tmp_key_;
+
   // All the blocks (uncompressed) from the current position up to the
   // root node
   std::vector<std::pair<Slice, std::string>> blocks_to_root_;
@@ -195,9 +200,11 @@ RtreeTableIterator::RtreeTableIterator(
       leaf_(""),
       leaf_slice_(Slice(leaf_)),
       query_mbb_(),
+      tmp_key_(),
       blocks_to_root_(std::vector<std::pair<Slice, std::string>>()) {
   if (context != nullptr) {
     query_mbb_ = static_cast<RtreeTableIteratorContext*>(context)->query_mbb;
+    tmp_key_.reserve(query_mbb_.size());
   }
 }
 
@@ -209,6 +216,9 @@ void RtreeTableIterator::Reset() {
   leaf_.clear();
   leaf_slice_ = Slice(leaf_);
   blocks_to_root_.clear();
+  // NOTE vmx 2017-03-15: I don't think clearing `tmp_key_` is really needed,
+  // but why not?
+  tmp_key_.clear();
 }
 
 bool RtreeTableIterator::Valid() const {
@@ -247,10 +257,12 @@ void RtreeTableIterator::Next() {
     // The key is an `InternalKey`. This means that the actual key (user key)
     // is first and then some addition data appended. This means we can read
     // the user key directly.
-    std::vector<std::pair<Variant, Variant>> key =
-        RtreeUtil::DeserializeKey(types, key_);
-
-    const bool intersect = RtreeUtil::IntersectMbb(key, query_mbb_);
+    //std::vector<std::pair<Variant, Variant>> key =
+    //    RtreeUtil::DeserializeKey(types, key_);
+    //const bool intersect = RtreeUtil::IntersectMbb(key, query_mbb_);
+    RtreeUtil::DeserializeKey(types, key_, tmp_key_);
+    const bool intersect = RtreeUtil::IntersectMbb(tmp_key_, query_mbb_);
+    tmp_key_.clear();
     // We have a matching key-value pair if the bounding boxes intersect
     // each other
     if (intersect) {
@@ -317,10 +329,13 @@ BlockHandle RtreeTableIterator::GetNextChildHandle(Slice* inner) {
     // The key is an `InternalKey`. This means that the actual key (user key)
     // is first and then some addition data appended. This means we can read
     // the user key directly.
-    std::vector<std::pair<Variant, Variant>> key =
-        RtreeUtil::DeserializeKey(types, key_slice);
+    //std::vector<std::pair<Variant, Variant>> key =
+    //    RtreeUtil::DeserializeKey(types, key_slice);
+    //const bool intersect = RtreeUtil::IntersectMbb(key, query_mbb_);
+    RtreeUtil::DeserializeKey(types, key_slice, tmp_key_);
+    const bool intersect = RtreeUtil::IntersectMbb(tmp_key_, query_mbb_);
+    tmp_key_.clear();
 
-    const bool intersect = RtreeUtil::IntersectMbb(key, query_mbb_);
     // If the key doesn't intersect with the search window (the bounding box
     // given by `Seek()`, try the next one.
     // If no target is given, just iterate over everything

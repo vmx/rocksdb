@@ -212,6 +212,48 @@ std::vector<double> RtreeUtil::EnclosingMbb(
 }
 
 bool RtreeUtil::IntersectMbb(
+    const Slice& aa_orig,
+    const std::vector<std::pair<Variant, Variant>> bb) {
+  // If the query bounding box is empty, return true, which corresponds to a
+  // full table scan
+  if (bb.empty()) {
+    return true;
+  }
+  // Make a mutable copy of the slice
+  Slice aa = Slice(aa_orig);
+  double dd_min;
+  double dd_max;
+  // If the bounding boxes don't intersect in one dimension, they won't
+  // intersect at all, hence we can return early
+  for (size_t ii = 0; ii < bb.size(); ii++) {
+    switch(bb[ii].first.type()) {
+      case Variant::kDouble:
+        dd_min = *reinterpret_cast<const double*>(aa.data());
+        aa.remove_prefix(sizeof(double));
+        dd_max = *reinterpret_cast<const double*>(aa.data());
+        aa.remove_prefix(sizeof(double));
+
+        if(dd_min > bb[ii].second.get_double() ||
+           bb[ii].first.get_double() > dd_max) {
+          return false;
+        }
+        break;
+      case Variant::kNull:
+      case Variant::kBool:
+      case Variant::kInt:
+      case Variant::kString:
+      default:
+        assert(false && "Not all types are implemented yet");
+        // TODO vmx 2017-03-03: Handle other cases
+        break;
+
+    }
+  }
+  return true;
+}
+
+
+bool RtreeUtil::IntersectMbb(
     const std::vector<std::pair<Variant, Variant>> aa,
     const std::vector<std::pair<Variant, Variant>> bb) {
   // Two bounding boxes are considered interseting if one of them isn't

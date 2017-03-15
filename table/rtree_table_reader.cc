@@ -260,9 +260,10 @@ void RtreeTableIterator::Next() {
     //std::vector<std::pair<Variant, Variant>> key =
     //    RtreeUtil::DeserializeKey(types, key_);
     //const bool intersect = RtreeUtil::IntersectMbb(key, query_mbb_);
-    RtreeUtil::DeserializeKey(types, key_, tmp_key_);
-    const bool intersect = RtreeUtil::IntersectMbb(tmp_key_, query_mbb_);
-    tmp_key_.clear();
+    //RtreeUtil::DeserializeKey(types, key_, tmp_key_);
+    //const bool intersect = RtreeUtil::IntersectMbb(tmp_key_, query_mbb_);
+    //tmp_key_.clear();
+    const bool intersect = RtreeUtil::IntersectMbb(key_, query_mbb_);
     // We have a matching key-value pair if the bounding boxes intersect
     // each other
     if (intersect) {
@@ -332,9 +333,11 @@ BlockHandle RtreeTableIterator::GetNextChildHandle(Slice* inner) {
     //std::vector<std::pair<Variant, Variant>> key =
     //    RtreeUtil::DeserializeKey(types, key_slice);
     //const bool intersect = RtreeUtil::IntersectMbb(key, query_mbb_);
-    RtreeUtil::DeserializeKey(types, key_slice, tmp_key_);
-    const bool intersect = RtreeUtil::IntersectMbb(tmp_key_, query_mbb_);
-    tmp_key_.clear();
+    //RtreeUtil::DeserializeKey(types, key_slice, tmp_key_);
+    //const bool intersect = RtreeUtil::IntersectMbb(tmp_key_, query_mbb_);
+    //tmp_key_.clear();
+
+    const bool intersect = RtreeUtil::IntersectMbb(key_slice, query_mbb_);
 
     // If the key doesn't intersect with the search window (the bounding box
     // given by `Seek()`, try the next one.

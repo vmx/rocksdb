@@ -103,6 +103,11 @@ class RtreeUtil {
   static std::vector<double> EnclosingMbb(const double* aa,
                                           const double* bb,
                                           uint8_t dimensions);
+  // Return true if the two given bounding boxes intersect or the second
+  // one isn't defined
+  static bool IntersectMbb(
+      const Slice& aa,
+      const std::vector<std::pair<Variant, Variant>> bb);
   // Return true if the two given bounding boxes intersect or one isn't defined
   static bool IntersectMbb(
       const std::vector<std::pair<Variant, Variant>> aa,

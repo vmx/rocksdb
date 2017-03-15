@@ -106,6 +106,10 @@ class RtreeUtil {
   // Return true if the two given bounding boxes intersect or the second
   // one isn't defined
   static bool IntersectMbb(
+    const Slice& aa_orig,
+    const std::string& bb,
+    const std::vector<Variant::Type>& types);
+  static bool IntersectMbb(
       const Slice& aa,
       const std::vector<std::pair<Variant, Variant>> bb);
   // Return true if the two given bounding boxes intersect or one isn't defined
@@ -152,7 +156,7 @@ private:
 extern const Comparator* LowxComparator();
 
 struct RtreeTableIteratorContext: public IteratorContext {
-  std::vector<std::pair<Variant, Variant>> query_mbb;
+  std::string query_mbb;
   RtreeTableIteratorContext(): query_mbb() {}
 };
 

@@ -59,9 +59,11 @@ class RtreeTableIterator : public InternalIterator {
   Slice key_;
   Slice value_;
   Status status_;
+  // The types of the dimensions
+  std::vector<Variant::Type> types_;
 
   // The bounding box of the window query
-  std::vector<std::pair<Variant, Variant>> query_mbb_;
+  std::string query_mbb_;
 
   // This acts as a buffer. For one iterator the size and shape of the key
   // is the same, hence we can re-use the vector. This saves a lot of
@@ -199,12 +201,15 @@ RtreeTableIterator::RtreeTableIterator(
       parent_offset_(0),
       leaf_(""),
       leaf_slice_(Slice(leaf_)),
-      query_mbb_(),
+      types_(),
+      query_mbb_(""),
       tmp_key_(),
       blocks_to_root_(std::vector<std::pair<Slice, std::string>>()) {
   if (context != nullptr) {
     query_mbb_ = static_cast<RtreeTableIteratorContext*>(context)->query_mbb;
-    tmp_key_.reserve(query_mbb_.size());
+    //tmp_key_.reserve(query_mbb_.size());
+    // TODO vmx 2017-03-03: Get the types from the table options
+    types_ = {Variant::kDouble, Variant::kDouble};
   }
 }
 
@@ -253,7 +258,7 @@ void RtreeTableIterator::Next() {
     GetLengthPrefixedSlice(&leaf_slice_, &value_);
 
     // TODO vmx 2017-03-03: Get the types from the table options
-    std::vector<Variant::Type> types = {Variant::kDouble, Variant::kDouble};
+    //std::vector<Variant::Type> types = {Variant::kDouble, Variant::kDouble};
     // The key is an `InternalKey`. This means that the actual key (user key)
     // is first and then some addition data appended. This means we can read
     // the user key directly.
@@ -263,7 +268,10 @@ void RtreeTableIterator::Next() {
     //RtreeUtil::DeserializeKey(types, key_, tmp_key_);
     //const bool intersect = RtreeUtil::IntersectMbb(tmp_key_, query_mbb_);
     //tmp_key_.clear();
-    const bool intersect = RtreeUtil::IntersectMbb(key_, query_mbb_);
+    const bool intersect = RtreeUtil::IntersectMbb(key_,
+                                                   query_mbb_,
+                                                   types_);
+
     // We have a matching key-value pair if the bounding boxes intersect
     // each other
     if (intersect) {
@@ -326,7 +334,7 @@ BlockHandle RtreeTableIterator::GetNextChildHandle(Slice* inner) {
     Slice key_slice;
     GetLengthPrefixedSlice(inner, &key_slice);
     // TODO vmx 2017-03-03: Get the types from the table options
-    std::vector<Variant::Type> types = {Variant::kDouble, Variant::kDouble};
+    //std::vector<Variant::Type> types = {Variant::kDouble, Variant::kDouble};
     // The key is an `InternalKey`. This means that the actual key (user key)
     // is first and then some addition data appended. This means we can read
     // the user key directly.
@@ -337,7 +345,9 @@ BlockHandle RtreeTableIterator::GetNextChildHandle(Slice* inner) {
     //const bool intersect = RtreeUtil::IntersectMbb(tmp_key_, query_mbb_);
     //tmp_key_.clear();
 
-    const bool intersect = RtreeUtil::IntersectMbb(key_slice, query_mbb_);
+    const bool intersect = RtreeUtil::IntersectMbb(key_slice,
+                                                   query_mbb_,
+                                                   types_);
 
     // If the key doesn't intersect with the search window (the bounding box
     // given by `Seek()`, try the next one.

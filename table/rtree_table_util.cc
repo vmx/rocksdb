@@ -213,6 +213,57 @@ std::vector<double> RtreeUtil::EnclosingMbb(
 
 bool RtreeUtil::IntersectMbb(
     const Slice& aa_orig,
+    const std::string& bb_orig,
+    const std::vector<Variant::Type>& types) {
+  // If the query bounding box is empty, return true, which corresponds to a
+  // full table scan
+  if (bb_orig.size() == 0) {
+    return true;
+  }
+  // Make a mutable copy of the slices
+  Slice aa = Slice(aa_orig);
+  Slice bb = Slice(bb_orig);
+
+  double aa_double_min;
+  double aa_double_max;
+  double bb_double_min;
+  double bb_double_max;
+  // If the bounding boxes don't intersect in one dimension, they won't
+  // intersect at all, hence we can return early
+  for (size_t ii = 0; ii < types.size(); ii++) {
+    switch(types[ii]) {
+      case Variant::kDouble:
+        aa_double_min = *reinterpret_cast<const double*>(aa.data());
+        aa.remove_prefix(sizeof(double));
+        aa_double_max = *reinterpret_cast<const double*>(aa.data());
+        aa.remove_prefix(sizeof(double));
+
+        bb_double_min = *reinterpret_cast<const double*>(bb.data());
+        bb.remove_prefix(sizeof(double));
+        bb_double_max = *reinterpret_cast<const double*>(bb.data());
+        bb.remove_prefix(sizeof(double));
+
+        if(aa_double_min > bb_double_max ||
+           bb_double_min > aa_double_max) {
+          return false;
+        }
+        break;
+      case Variant::kNull:
+      case Variant::kBool:
+      case Variant::kInt:
+      case Variant::kString:
+      default:
+        assert(false && "Not all types are implemented yet");
+        // TODO vmx 2017-03-03: Handle other cases
+        break;
+
+    }
+  }
+  return true;
+}
+
+bool RtreeUtil::IntersectMbb(
+    const Slice& aa_orig,
     const std::vector<std::pair<Variant, Variant>> bb) {
   // If the query bounding box is empty, return true, which corresponds to a
   // full table scan

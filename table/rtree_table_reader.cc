@@ -60,7 +60,7 @@ class RtreeTableIterator : public InternalIterator {
   Slice value_;
   Status status_;
   // The types of the dimensions
-  std::vector<Variant::Type> types_;
+  std::vector<RtreeDimensionType> types_;
 
   // The bounding box of the window query
   std::string query_mbb_;
@@ -209,7 +209,7 @@ RtreeTableIterator::RtreeTableIterator(
     query_mbb_ = static_cast<RtreeTableIteratorContext*>(context)->query_mbb;
     //tmp_key_.reserve(query_mbb_.size());
     // TODO vmx 2017-03-03: Get the types from the table options
-    types_ = {Variant::kDouble, Variant::kDouble};
+    types_ = {RtreeDimensionType::kDouble, RtreeDimensionType::kDouble};
   }
 }
 

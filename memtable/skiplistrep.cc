@@ -289,7 +289,7 @@ class SkipListMbbRep : public SkipListRep {
         query_mbb_ = static_cast<RtreeTableIteratorContext*>(
             context)->query_mbb;
         // TODO vmx 2017-03-03: Get the types from the table options
-        types_ = {Variant::kDouble, Variant::kDouble};
+        types_ = {RtreeDimensionType::kDouble, RtreeDimensionType::kDouble};
       }
     }
 
@@ -306,7 +306,7 @@ class SkipListMbbRep : public SkipListRep {
    private:
     // The multi-dimensional bounding box the query was done with
     std::string query_mbb_;
-    std::vector<Variant::Type> types_;
+    std::vector<RtreeDimensionType> types_;
 
     // Skips the current key if it doesn't intersect with the query window
     // bounding box and moves on to the next one.

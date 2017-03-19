@@ -50,9 +50,19 @@ std::string RtreeTableFactory::GetPrintableTableOptions() const {
 
   snprintf(buffer, kBufferSize, "  block_size: %" ROCKSDB_PRIszt "\n",
            table_options_.block_size);
-  snprintf(buffer, kBufferSize, "  dimensions: %d\n",
-           table_options_.dimensions);
   ret.append(buffer);
+  //snprintf(buffer, kBufferSize, "  dimensions: ");
+  ret.append("  dimensions: ");
+  for (RtreeDimensionType type: table_options_.dimensions) {
+    if (&type != &table_options_.dimensions.front()) {
+      ret.append(", ");
+    }
+    switch(type) {
+      case kDouble: ret.append("double"); break;
+      default: ret.append("(unknown type)");
+    }
+  }
+  ret.append("\n");
 
   return ret;
 }

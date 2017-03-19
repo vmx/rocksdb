@@ -387,6 +387,13 @@ struct RtreeTablePropertyNames {
   static const std::string kDimensions;
 };
 
+// The possible types a dimension can be
+enum RtreeDimensionType : char {
+  kDouble,
+  kString,
+};
+
+
 struct RtreeTableOptions {
   // Approximate size of user data packed per block.  Note that the
   // block size specified here corresponds to uncompressed data.  The
@@ -394,7 +401,7 @@ struct RtreeTableOptions {
   // compression is enabled.  This parameter can be changed dynamically.
   size_t block_size = 4 * 1024;
   // The dimensionality the R-tree has
-  uint8_t dimensions = 2;
+  std::vector<RtreeDimensionType> dimensions;
 };
 extern TableFactory* NewRtreeTableFactory(const RtreeTableOptions& options = RtreeTableOptions());
 

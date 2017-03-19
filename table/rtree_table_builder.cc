@@ -22,7 +22,7 @@ const std::string RtreeTablePropertyNames::kDimensions =
     "rocksdb.rtree.table.dimensions";
 
 
-RtreeLeafBuilder::RtreeLeafBuilder(uint8_t dimensions)
+RtreeLeafBuilder::RtreeLeafBuilder(std::vector<RtreeDimensionType> dimensions)
     : buffer_(""),
       finished_(false),
       dimensions_(dimensions) {}
@@ -37,15 +37,7 @@ void RtreeLeafBuilder::Reset() {
 void RtreeLeafBuilder::Add(const Slice& key, const Slice& value) {
   assert(!finished_);
 
-  // Decode the key into its parts to calculate the enclosing bounding box
-  // of it
-  // TODO vmx 2017-03-03: Get the types from the table options
-  std::vector<Variant::Type> types = {Variant::kDouble, Variant::kDouble};
-  // Deserializing also works with internal keys as there is only additional data *after* the
-  // actual key.
-  std::vector<std::pair<Variant, Variant>> deserialized = RtreeUtil::DeserializeKey(types, key);
-
-  parent_key_ = RtreeUtil::EnclosingMbb(parent_key_, deserialized);
+  RtreeUtil::ExpandMbb(parent_key_, key, dimensions_);
 
   // We need to store the internal key as that's expected for further
   // operations within RocksDB
@@ -320,15 +312,11 @@ Status RtreeTableBuilder::BuildTree(const Slice& block_contents,
     // The key is an `InternalKey`. This means that the actual key (user key)
     // is first and then some addition data appended. This means we can read
     // the user key directly.
-    //key = reinterpret_cast<const double*>(contents.data());
-    // TODO vmx 2017-03-03: Get the types from the table options
-    std::vector<Variant::Type> types = {Variant::kDouble, Variant::kDouble};
-    // TODO vmx 2017-03-06: Here the key gets deserialized. A possible
-    // optimization is to not having it serialized before flushing it to disk
     Slice key_slice;
     GetLengthPrefixedSlice(&contents, &key_slice);
-    key = RtreeUtil::DeserializeKey(types, key_slice);
-    parent_key = RtreeUtil::EnclosingMbb(parent_key, key);
+    //key = RtreeUtil::DeserializeKey(types, key_slice);
+    //parent_key = RtreeUtil::EnclosingMbb(parent_key, key);
+    RtreeUtil::ExpandMbb(parent_key, key_slice, table_options_.dimensions);
 
     const size_t handle_size = 2 * sizeof(uint64_t);
     contents.remove_prefix(handle_size);

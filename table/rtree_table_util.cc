@@ -163,6 +163,41 @@ std::string RtreeUtil::EncodeKey(std::vector<std::pair<Variant, Variant>>& mbb) 
   return ikey.Encode().ToString();
 }
 
+void RtreeUtil::ExpandMbb(std::vector<std::pair<Variant, Variant>>& base,
+                          const Slice& expansion_const,
+                          const std::vector<RtreeDimensionType> types) {
+  Slice expansion(expansion_const);
+  bool base_is_empty = false;
+  if (base.empty()) {
+    base_is_empty = true;
+    base.reserve(types.size());
+    base.resize(types.size());
+  }
+  double expansion_double_min;
+  double expansion_double_max;
+  for (size_t ii = 0; ii < types.size(); ii++) {
+    switch(types[ii]) {
+      case RtreeDimensionType::kDouble:
+        expansion_double_min = *reinterpret_cast<const double*>(expansion.data());
+        expansion.remove_prefix(sizeof(double));
+        expansion_double_max = *reinterpret_cast<const double*>(expansion.data());
+        expansion.remove_prefix(sizeof(double));
+
+        if (base_is_empty || expansion_double_min < base[ii].first.get_double()) {
+          base[ii].first = Variant(expansion_double_min);
+        }
+        if (base_is_empty || expansion_double_max > base[ii].second.get_double()) {
+          base[ii].second = Variant(expansion_double_max);
+        }
+        break;
+      case RtreeDimensionType::kString:
+        assert(false && "not yet implemented");
+        break;
+    }
+  }
+}
+
+
 std::vector<std::pair<Variant, Variant>> RtreeUtil::EnclosingMbb(
     const std::vector<std::pair<Variant, Variant>> aa,
     const std::vector<std::pair<Variant, Variant>> bb) {
@@ -214,7 +249,7 @@ std::vector<double> RtreeUtil::EnclosingMbb(
 bool RtreeUtil::IntersectMbb(
     const Slice& aa_orig,
     const std::string& bb_orig,
-    const std::vector<Variant::Type>& types) {
+    const std::vector<RtreeDimensionType>& types) {
   // If the query bounding box is empty, return true, which corresponds to a
   // full table scan
   if (bb_orig.size() == 0) {
@@ -232,7 +267,7 @@ bool RtreeUtil::IntersectMbb(
   // intersect at all, hence we can return early
   for (size_t ii = 0; ii < types.size(); ii++) {
     switch(types[ii]) {
-      case Variant::kDouble:
+      case RtreeDimensionType::kDouble:
         aa_double_min = *reinterpret_cast<const double*>(aa.data());
         aa.remove_prefix(sizeof(double));
         aa_double_max = *reinterpret_cast<const double*>(aa.data());
@@ -248,15 +283,11 @@ bool RtreeUtil::IntersectMbb(
           return false;
         }
         break;
-      case Variant::kNull:
-      case Variant::kBool:
-      case Variant::kInt:
-      case Variant::kString:
+      case RtreeDimensionType::kString:
       default:
         assert(false && "Not all types are implemented yet");
         // TODO vmx 2017-03-03: Handle other cases
         break;
-
     }
   }
   return true;

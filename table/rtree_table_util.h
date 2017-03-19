@@ -9,6 +9,7 @@
 
 #include "rocksdb/comparator.h"
 #include "rocksdb/options.h"
+#include "rocksdb/table.h"
 
 namespace rocksdb {
 
@@ -96,6 +97,10 @@ class RtreeUtil {
  public:
   // Encodes a given bounding box as `InternalKey`
   static std::string EncodeKey(std::vector<std::pair<Variant, Variant>>& mbb);
+  // Expand an MBB if the other given MBB is bigger in any dimension
+  static void ExpandMbb(std::vector<std::pair<Variant, Variant>>& base,
+                        const Slice& expansion,
+                        const std::vector<RtreeDimensionType> types);
   // Return the enclosing bounds of two multi-dimensional bounding boxes
   static std::vector<std::pair<Variant, Variant>> EnclosingMbb(
       const std::vector<std::pair<Variant, Variant>> aa,
@@ -108,7 +113,7 @@ class RtreeUtil {
   static bool IntersectMbb(
     const Slice& aa_orig,
     const std::string& bb,
-    const std::vector<Variant::Type>& types);
+    const std::vector<RtreeDimensionType>& types);
   static bool IntersectMbb(
       const Slice& aa,
       const std::vector<std::pair<Variant, Variant>> bb);

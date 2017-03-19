@@ -88,6 +88,7 @@ using rocksdb::RateLimiter;
 using rocksdb::NewGenericRateLimiter;
 using rocksdb::IteratorContext;
 using rocksdb::RtreeTableIteratorContext;
+using rocksdb::RtreeDimensionType;
 
 using std::shared_ptr;
 
@@ -1461,8 +1462,12 @@ void rocksdb_rtree_options_destroy(
 }
 
 void rocksdb_rtree_options_set_dimensions(
-    rocksdb_rtree_table_options_t* options, uint8_t v) {
-  options->rep.dimensions = v;
+    rocksdb_rtree_table_options_t* options, int* dimensions, size_t num_dimensions) {
+  options->rep.dimensions.reserve(num_dimensions);
+  for (size_t ii = 0; ii < num_dimensions; ii++) {
+    options->rep.dimensions[ii] = static_cast<RtreeDimensionType>(
+        dimensions[ii]);
+  }
 }
 
 void rocksdb_rtree_options_set_block_size(

@@ -112,16 +112,13 @@ class RtreeTableReader: public TableReader {
   std::shared_ptr<const TableProperties> table_properties_;
   BlockHandle root_block_handle_;
   // The number of dimensions the R-tree has
-  uint8_t dimensions_;
+  std::vector<RtreeDimensionType> dimensions_;
 
   friend class RtreeTableIterator;
 
   // Read some compressed data from file
   std::string ReadCompressed(size_t offset, size_t size) const;
   std::string ReadCompressed(BlockHandle* block_handle) const;
-
-  // Return the size of the keys used in this table
-  size_t KeySize() const;
 
   // No copying allowed
   explicit RtreeTableReader(const TableReader&) = delete;

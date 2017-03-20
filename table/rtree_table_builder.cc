@@ -164,8 +164,10 @@ Status RtreeTableBuilder::Finish() {
   // reader can make use of it
   properties_.user_collected_properties[
       RtreeTablePropertyNames::kDimensions].assign(
-          reinterpret_cast<const char*>(&table_options_.dimensions),
-          sizeof(table_options_.dimensions));
+          reinterpret_cast<const char*>(table_options_.dimensions.data()),
+          // The vector is a list of Enums encoded as chars, hence the
+          // size of the vector can be used.
+          table_options_.dimensions.size());
 
   // Store the index tree after the data blocks
   BlockHandle parents_block_handle;

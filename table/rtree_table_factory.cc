@@ -58,7 +58,7 @@ std::string RtreeTableFactory::GetPrintableTableOptions() const {
       ret.append(", ");
     }
     switch(type) {
-      case kDouble: ret.append("double"); break;
+      case RtreeDimensionType::kDouble: ret.append("double"); break;
       default: ret.append("(unknown type)");
     }
   }

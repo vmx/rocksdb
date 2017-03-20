@@ -388,7 +388,7 @@ struct RtreeTablePropertyNames {
 };
 
 // The possible types a dimension can be
-enum RtreeDimensionType : char {
+enum class RtreeDimensionType : char {
   kDouble,
   kString,
 };

@@ -10,6 +10,7 @@
 #include "rocksdb/status.h"    // for Status
 #include "rocksdb/table_properties.h"
 
+#include "table/rtree_table_factory.h"
 #include "table/rtree_table_reader.h"
 #include "table/rtree_table_util.h"
 #include "table/get_context.h"
@@ -59,8 +60,6 @@ class RtreeTableIterator : public InternalIterator {
   Slice key_;
   Slice value_;
   Status status_;
-  // The types of the dimensions
-  std::vector<RtreeDimensionType> types_;
 
   // The bounding box of the window query
   std::string query_mbb_;
@@ -126,7 +125,18 @@ RtreeTableReader::RtreeTableReader(const ImmutableCFOptions& ioptions,
     status_ = Status::Corruption("Number of dimensions not found");
     return;
   }
-  dimensions_ = *reinterpret_cast<const uint8_t*>(dimensions->second.data());
+  dimensions_ = std::vector<RtreeDimensionType>(
+      reinterpret_cast<const RtreeDimensionType*>(dimensions->second.data()),
+      reinterpret_cast<const RtreeDimensionType*>(dimensions->second.data()) +
+      dimensions->second.size());
+
+  rocksdb::RtreeTableFactory* table_factory =
+      static_cast<rocksdb::RtreeTableFactory*>(ioptions.table_factory);
+  if (dimensions_ != table_factory->table_options().dimensions) {
+    status_ = Status::InvalidArgument(
+        "The dimensions given don't match the one used to build RtreeTable");
+    return;
+  }
 }
 
 RtreeTableReader::~RtreeTableReader() {
@@ -190,10 +200,6 @@ uint64_t RtreeTableReader::ApproximateOffsetOf(const Slice& key) {
   return 0;
 }
 
-size_t RtreeTableReader::KeySize() const {
-  return dimensions_ * 2 * sizeof(double) + kMinInternalKeySize;
-}
-
 RtreeTableIterator::RtreeTableIterator(
     RtreeTableReader* table,
     IteratorContext* context)
@@ -201,15 +207,11 @@ RtreeTableIterator::RtreeTableIterator(
       parent_offset_(0),
       leaf_(""),
       leaf_slice_(Slice(leaf_)),
-      types_(),
       query_mbb_(""),
       tmp_key_(),
       blocks_to_root_(std::vector<std::pair<Slice, std::string>>()) {
   if (context != nullptr) {
     query_mbb_ = static_cast<RtreeTableIteratorContext*>(context)->query_mbb;
-    //tmp_key_.reserve(query_mbb_.size());
-    // TODO vmx 2017-03-03: Get the types from the table options
-    types_ = {RtreeDimensionType::kDouble, RtreeDimensionType::kDouble};
   }
 }
 
@@ -257,20 +259,9 @@ void RtreeTableIterator::Next() {
     GetLengthPrefixedSlice(&leaf_slice_, &key_);
     GetLengthPrefixedSlice(&leaf_slice_, &value_);
 
-    // TODO vmx 2017-03-03: Get the types from the table options
-    //std::vector<Variant::Type> types = {Variant::kDouble, Variant::kDouble};
-    // The key is an `InternalKey`. This means that the actual key (user key)
-    // is first and then some addition data appended. This means we can read
-    // the user key directly.
-    //std::vector<std::pair<Variant, Variant>> key =
-    //    RtreeUtil::DeserializeKey(types, key_);
-    //const bool intersect = RtreeUtil::IntersectMbb(key, query_mbb_);
-    //RtreeUtil::DeserializeKey(types, key_, tmp_key_);
-    //const bool intersect = RtreeUtil::IntersectMbb(tmp_key_, query_mbb_);
-    //tmp_key_.clear();
     const bool intersect = RtreeUtil::IntersectMbb(key_,
                                                    query_mbb_,
-                                                   types_);
+                                                   table_->dimensions_);
 
     // We have a matching key-value pair if the bounding boxes intersect
     // each other
@@ -333,21 +324,10 @@ BlockHandle RtreeTableIterator::GetNextChildHandle(Slice* inner) {
   while (inner->size() > 0) {
     Slice key_slice;
     GetLengthPrefixedSlice(inner, &key_slice);
-    // TODO vmx 2017-03-03: Get the types from the table options
-    //std::vector<Variant::Type> types = {Variant::kDouble, Variant::kDouble};
-    // The key is an `InternalKey`. This means that the actual key (user key)
-    // is first and then some addition data appended. This means we can read
-    // the user key directly.
-    //std::vector<std::pair<Variant, Variant>> key =
-    //    RtreeUtil::DeserializeKey(types, key_slice);
-    //const bool intersect = RtreeUtil::IntersectMbb(key, query_mbb_);
-    //RtreeUtil::DeserializeKey(types, key_slice, tmp_key_);
-    //const bool intersect = RtreeUtil::IntersectMbb(tmp_key_, query_mbb_);
-    //tmp_key_.clear();
 
     const bool intersect = RtreeUtil::IntersectMbb(key_slice,
                                                    query_mbb_,
-                                                   types_);
+                                                   table_->dimensions_);
 
     // If the key doesn't intersect with the search window (the bounding box
     // given by `Seek()`, try the next one.

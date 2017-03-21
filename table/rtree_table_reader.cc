@@ -64,11 +64,6 @@ class RtreeTableIterator : public InternalIterator {
   // The bounding box of the window query
   std::string query_mbb_;
 
-  // This acts as a buffer. For one iterator the size and shape of the key
-  // is the same, hence we can re-use the vector. This saves a lot of
-  // allocations
-  std::vector<std::pair<Variant, Variant>> tmp_key_;
-
   // All the blocks (uncompressed) from the current position up to the
   // root node
   std::vector<std::pair<Slice, std::string>> blocks_to_root_;
@@ -208,7 +203,6 @@ RtreeTableIterator::RtreeTableIterator(
       leaf_(""),
       leaf_slice_(Slice(leaf_)),
       query_mbb_(""),
-      tmp_key_(),
       blocks_to_root_(std::vector<std::pair<Slice, std::string>>()) {
   if (context != nullptr) {
     query_mbb_ = static_cast<RtreeTableIteratorContext*>(context)->query_mbb;
@@ -223,9 +217,6 @@ void RtreeTableIterator::Reset() {
   leaf_.clear();
   leaf_slice_ = Slice(leaf_);
   blocks_to_root_.clear();
-  // NOTE vmx 2017-03-15: I don't think clearing `tmp_key_` is really needed,
-  // but why not?
-  tmp_key_.clear();
 }
 
 bool RtreeTableIterator::Valid() const {

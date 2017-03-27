@@ -88,7 +88,6 @@ using rocksdb::RateLimiter;
 using rocksdb::NewGenericRateLimiter;
 using rocksdb::IteratorContext;
 using rocksdb::RtreeTableIteratorContext;
-using rocksdb::RtreeDimensionType;
 
 using std::shared_ptr;
 
@@ -1461,15 +1460,6 @@ void rocksdb_rtree_options_destroy(
   delete options;
 }
 
-void rocksdb_rtree_options_set_dimensions(
-    rocksdb_rtree_table_options_t* options, int* dimensions, size_t num_dimensions) {
-  options->rep.dimensions.resize(num_dimensions);
-  for (size_t ii = 0; ii < num_dimensions; ii++) {
-    options->rep.dimensions[ii] = static_cast<RtreeDimensionType>(
-        dimensions[ii]);
-  }
-}
-
 void rocksdb_rtree_options_set_block_size(
     rocksdb_rtree_table_options_t* options, size_t v) {
   options->rep.block_size = v;
@@ -2114,14 +2104,12 @@ void rocksdb_comparator_destroy(rocksdb_comparator_t* cmp) {
 
 static void lowx_comparator_destroy(void* arg) {}
 static int lowx_comparator_compare(void* arg,
-                                   const char* a,
-                                   size_t alen,
-                                   const char* b,
-                                   size_t blen) {
-  const uint8_t dimensions = (alen / sizeof(double)) / 2;
-  return rocksdb::RtreeUtil::LowxComparatorCompare((double *)a,
-                                                   (double *)b,
-                                                   dimensions);
+                                   const char* aa,
+                                   size_t aa_len,
+                                   const char* bb,
+                                   size_t bb_len) {
+  return rocksdb::RtreeUtil::LowxComparatorCompare(Slice(aa, aa_len),
+                                                   Slice(bb, bb_len));
 }
 static const char* lowx_comparator_name(void *arg) {
   return rocksdb::RtreeUtil::LowxComparatorName();

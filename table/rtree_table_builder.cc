@@ -18,14 +18,9 @@
 
 namespace rocksdb {
 
-const std::string RtreeTablePropertyNames::kDimensions =
-    "rocksdb.rtree.table.dimensions";
-
-
-RtreeLeafBuilder::RtreeLeafBuilder(std::vector<RtreeDimensionType> dimensions)
+RtreeLeafBuilder::RtreeLeafBuilder()
     : buffer_(""),
-      finished_(false),
-      dimensions_(dimensions) {}
+      finished_(false) {}
 
 void RtreeLeafBuilder::Reset() {
   buffer_.clear();
@@ -37,7 +32,7 @@ void RtreeLeafBuilder::Reset() {
 void RtreeLeafBuilder::Add(const Slice& key, const Slice& value) {
   assert(!finished_);
 
-  RtreeUtil::ExpandMbb(parent_key_, key, dimensions_);
+  RtreeUtil::ExpandMbb(parent_key_, key);
 
   // We need to store the internal key as that's expected for further
   // operations within RocksDB
@@ -99,7 +94,7 @@ RtreeTableBuilder::RtreeTableBuilder(
     : ioptions_(ioptions),
       file_(file),
       table_options_(table_options),
-      data_block_(table_options_.dimensions) {
+      data_block_() {
   properties_.num_data_blocks = 0;
   properties_.column_family_id = column_family_id;
   properties_.column_family_name = column_family_name;
@@ -159,15 +154,6 @@ Status RtreeTableBuilder::Finish() {
 
   // The data size is the key-values without the index structure
   properties_.data_size = FileSize();
-
-  // Store the number of dimensions of the table, so that the rtree table
-  // reader can make use of it
-  properties_.user_collected_properties[
-      RtreeTablePropertyNames::kDimensions].assign(
-          reinterpret_cast<const char*>(table_options_.dimensions.data()),
-          // The vector is a list of Enums encoded as chars, hence the
-          // size of the vector can be used.
-          table_options_.dimensions.size());
 
   // Store the index tree after the data blocks
   BlockHandle parents_block_handle;
@@ -306,7 +292,7 @@ Status RtreeTableBuilder::BuildTree(const Slice& block_contents,
   // Have a temproary string we can use as a storage for a Slice
   std::string tmp_contents;
   // The key that will be used by the parent node to point to its children
-  std::vector<std::pair<Variant, Variant>> parent_key;
+  std::vector<Variant> parent_key;
 
   // Iterate through the whole block and write it in chunks (compressed)
   // to disk. Each chunk will be a node a parent will point to.
@@ -316,9 +302,7 @@ Status RtreeTableBuilder::BuildTree(const Slice& block_contents,
     // the user key directly.
     Slice key_slice;
     GetLengthPrefixedSlice(&contents, &key_slice);
-    //key = RtreeUtil::DeserializeKey(types, key_slice);
-    //parent_key = RtreeUtil::EnclosingMbb(parent_key, key);
-    RtreeUtil::ExpandMbb(parent_key, key_slice, table_options_.dimensions);
+    RtreeUtil::ExpandMbb(parent_key, key_slice);
 
     const size_t handle_size = 2 * sizeof(uint64_t);
     contents.remove_prefix(handle_size);

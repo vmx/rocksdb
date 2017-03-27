@@ -10,7 +10,6 @@ int main() {
   // Set the Table, Memtable and Comparator for the R-tree
   rocksdb::Options options;
   rocksdb::RtreeTableOptions table_options;
-  table_options.dimensions = 2;
   options.table_factory.reset(rocksdb::NewRtreeTableFactory(table_options));
   options.memtable_factory.reset(new rocksdb::SkipListMbbFactory);
   options.comparator = rocksdb::LowxComparator();

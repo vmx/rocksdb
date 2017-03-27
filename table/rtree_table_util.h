@@ -15,6 +15,19 @@ namespace rocksdb {
 
 const size_t kMinInternalKeySize = 8;
 
+// The ordering of the enum follow the Apache CouchDB collation:
+// http://docs.couchdb.org/en/2.0.0/couchapp/views/collation.html#collation-specification
+//enum class RtreeDimensionType : uint8_t {
+enum class RtreeDimensionType : uint8_t {
+  kNull = 0x0,
+  kBool = 0x1,
+  // Currently there's no differentiation between integers and doubles, but
+  // it's reserved for future use
+  //kInt = 0x2,
+  kDouble = 0x3,
+  kString = 0x4,
+};
+
 
 // A variant type is needed. Until C++17 compilers are the norm (where
 // std::variant is a thing), use a custom class for it.
@@ -93,14 +106,38 @@ struct Variant {
 };
 
 
+class RtreeKeyBuilder {
+ public:
+  RtreeKeyBuilder() {
+    // That's an arbitrary value, but should be big enough for most keys
+    // and small enough to not doing any harm
+    key_.reserve(4096);
+  };
+  void push_double(const double& dd) {
+    key_.push_back(static_cast<uint8_t>(rocksdb::RtreeDimensionType::kDouble));
+    const uint8_t* data = reinterpret_cast<const uint8_t*>(&dd);
+    key_.insert(key_.end(), data, data + sizeof(double));
+  }
+  const char* data() const {
+    return key_.data();
+  }
+  size_t size() const {
+    return key_.size();
+  }
+ private:
+  //std::vector<uint8_t> key_;
+  std::vector<char> key_;
+};
+
+
+
 class RtreeUtil {
  public:
   // Encodes a given bounding box as `InternalKey`
-  static std::string EncodeKey(std::vector<std::pair<Variant, Variant>>& mbb);
+  static std::string EncodeKey(std::vector<Variant>& mbb);
   // Expand an MBB if the other given MBB is bigger in any dimension
-  static void ExpandMbb(std::vector<std::pair<Variant, Variant>>& base,
-                        const Slice& expansion,
-                        const std::vector<RtreeDimensionType> types);
+  static void ExpandMbb(std::vector<Variant>& base,
+                        const Slice& expansion);
   // Return the enclosing bounds of two multi-dimensional bounding boxes
   static std::vector<std::pair<Variant, Variant>> EnclosingMbb(
       const std::vector<std::pair<Variant, Variant>> aa,
@@ -112,8 +149,7 @@ class RtreeUtil {
   // one isn't defined
   static bool IntersectMbb(
     const Slice& aa_orig,
-    const std::string& bb,
-    const std::vector<RtreeDimensionType>& types);
+    const std::string& bb);
   static bool IntersectMbb(
       const Slice& aa,
       const std::vector<std::pair<Variant, Variant>> bb);
@@ -134,9 +170,8 @@ class RtreeUtil {
   // These comparator name and compare function are used for the C and C++
   // based comparator.
   static const char* LowxComparatorName() { return "rocksdb.LowxComparator"; };
-  static int LowxComparatorCompare(const double* aa,
-                                   const double* bb,
-                                   uint8_t dimensions);
+  static int LowxComparatorCompare(const Slice& aa_const,
+                                   const Slice& bb_const);
 
   // Serialize the Types of a vector of Variants
   static const std::string SerializeTypes(const std::vector<Variant>& types);

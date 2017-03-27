@@ -111,8 +111,6 @@ class RtreeTableReader: public TableReader {
   //TableProperties table_properties_;
   std::shared_ptr<const TableProperties> table_properties_;
   BlockHandle root_block_handle_;
-  // The number of dimensions the R-tree has
-  std::vector<RtreeDimensionType> dimensions_;
 
   friend class RtreeTableIterator;
 

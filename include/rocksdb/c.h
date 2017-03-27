@@ -522,13 +522,6 @@ extern ROCKSDB_LIBRARY_API rocksdb_rtree_table_options_t*
 rocksdb_rtree_options_create();
 extern ROCKSDB_LIBRARY_API void rocksdb_rtree_options_destroy(
     rocksdb_rtree_table_options_t* options);
-enum {
-  rocksdb_rtree_dimension_double = 0,
-  rocksdb_rtree_dimension_string = 1,
-};
-extern ROCKSDB_LIBRARY_API void rocksdb_rtree_options_set_dimensions(
-    rocksdb_rtree_table_options_t* options, int* dimensions,
-    size_t num_dimensions);
 extern ROCKSDB_LIBRARY_API void rocksdb_rtree_options_set_block_size(
     rocksdb_rtree_table_options_t* options, size_t v);
 extern ROCKSDB_LIBRARY_API void rocksdb_options_set_rtree_table_factory(

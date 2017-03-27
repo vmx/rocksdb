@@ -112,26 +112,6 @@ RtreeTableReader::RtreeTableReader(const ImmutableCFOptions& ioptions,
     return;
   }
   table_properties_.reset(table_properties);
-  auto& user_props = table_properties->user_collected_properties;
-
-  auto dimensions = user_props.find(
-      RtreeTablePropertyNames::kDimensions);
-  if (dimensions == user_props.end()) {
-    status_ = Status::Corruption("Number of dimensions not found");
-    return;
-  }
-  dimensions_ = std::vector<RtreeDimensionType>(
-      reinterpret_cast<const RtreeDimensionType*>(dimensions->second.data()),
-      reinterpret_cast<const RtreeDimensionType*>(dimensions->second.data()) +
-      dimensions->second.size());
-
-  rocksdb::RtreeTableFactory* table_factory =
-      static_cast<rocksdb::RtreeTableFactory*>(ioptions.table_factory);
-  if (dimensions_ != table_factory->table_options().dimensions) {
-    status_ = Status::InvalidArgument(
-        "The dimensions given don't match the one used to build RtreeTable");
-    return;
-  }
 }
 
 RtreeTableReader::~RtreeTableReader() {
@@ -250,9 +230,7 @@ void RtreeTableIterator::Next() {
     GetLengthPrefixedSlice(&leaf_slice_, &key_);
     GetLengthPrefixedSlice(&leaf_slice_, &value_);
 
-    const bool intersect = RtreeUtil::IntersectMbb(key_,
-                                                   query_mbb_,
-                                                   table_->dimensions_);
+    const bool intersect = RtreeUtil::IntersectMbb(key_, query_mbb_);
 
     // We have a matching key-value pair if the bounding boxes intersect
     // each other
@@ -316,9 +294,7 @@ BlockHandle RtreeTableIterator::GetNextChildHandle(Slice* inner) {
     Slice key_slice;
     GetLengthPrefixedSlice(inner, &key_slice);
 
-    const bool intersect = RtreeUtil::IntersectMbb(key_slice,
-                                                   query_mbb_,
-                                                   table_->dimensions_);
+    const bool intersect = RtreeUtil::IntersectMbb(key_slice, query_mbb_);
 
     // If the key doesn't intersect with the search window (the bounding box
     // given by `Seek()`, try the next one.

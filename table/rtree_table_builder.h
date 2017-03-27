@@ -26,7 +26,7 @@ class RtreeLeafBuilder {
   //RtreeLeafBuilder(const RtreeBlockBuilder&) = delete;
   //RtreeLeafBuilder& operator=(const RtreeBlockBuilder&) = delete;
 
-  RtreeLeafBuilder(std::vector<RtreeDimensionType> dimensions);
+  RtreeLeafBuilder();
   //~RtreeLeafBuilder();
 
   // Reset the contents as if the BlockBuilder was just constructed.
@@ -61,8 +61,7 @@ class RtreeLeafBuilder {
 
   // The key that will be used by the parent node to point to its children
   //const double* parent_key_;
-  std::vector<std::pair<Variant, Variant>> parent_key_;
-  std::vector<RtreeDimensionType> dimensions_;
+  std::vector<Variant> parent_key_;
 
   // No copying allowed
   RtreeLeafBuilder(const RtreeLeafBuilder&) = delete;

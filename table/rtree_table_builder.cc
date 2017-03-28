@@ -280,8 +280,6 @@ Status RtreeTableBuilder::BuildTree(const Slice& block_contents,
                                     WritableFileWriter* file,
                                     BlockHandle* block_handle) {
   std::string parents;
-  // The key that just got read
-  std::vector<std::pair<Variant, Variant>> key;
   // Create a non const version of the slice
   Slice contents = Slice(block_contents);
   // The offset before the last compression

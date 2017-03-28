@@ -148,54 +148,17 @@ class RtreeUtil {
   // Expand an MBB if the other given MBB is bigger in any dimension
   static void ExpandMbb(std::vector<Variant>& base,
                         const Slice& expansion);
-  // Return the enclosing bounds of two multi-dimensional bounding boxes
-  static std::vector<std::pair<Variant, Variant>> EnclosingMbb(
-      const std::vector<std::pair<Variant, Variant>> aa,
-      const std::vector<std::pair<Variant, Variant>> bb);
-  static std::vector<double> EnclosingMbb(const double* aa,
-                                          const double* bb,
-                                          uint8_t dimensions);
   // Return true if the two given bounding boxes intersect or the second
   // one isn't defined
   static bool IntersectMbb(
     const Slice& aa_orig,
     const std::string& bb);
-  static bool IntersectMbb(
-      const Slice& aa,
-      const std::vector<std::pair<Variant, Variant>> bb);
-  // Return true if the two given bounding boxes intersect or one isn't defined
-  static bool IntersectMbb(
-      const std::vector<std::pair<Variant, Variant>> aa,
-      const std::vector<std::pair<Variant, Variant>> bb);
-  // Return true if the two given bounding boxes intersect or one isn't defined
-  // Convinience method to make the caller code easier to read
-  static bool IntersectMbb(const double* aa,
-                           const std::string& bb,
-                           uint8_t dimensions);
-  // Return true if the two given bounding boxes intersect or one isn't defined
-  static bool IntersectMbb(const double* aa,
-                           const double* bb,
-                           uint8_t dimensions);
 
   // These comparator name and compare function are used for the C and C++
   // based comparator.
   static const char* LowxComparatorName() { return "rocksdb.LowxComparator"; };
   static int LowxComparatorCompare(const Slice& aa_const,
                                    const Slice& bb_const);
-
-  // Serialize the Types of a vector of Variants
-  static const std::string SerializeTypes(const std::vector<Variant>& types);
-  // Deserialize the Types of a serialized vectoe of Variants
-  static const std::vector<Variant::Type> DeserializeTypes(
-      const std::string serialized);
-  // Deserialize a key (Slice) into a vector of Variants
-  static const std::vector<std::pair<Variant, Variant>> DeserializeKey(
-      const std::vector<Variant::Type> types,
-      const Slice& key_slice);
-  static void DeserializeKey(
-      const std::vector<Variant::Type> types,
-      const Slice& key_slice,
-      std::vector<std::pair<Variant, Variant>>& deserialized);
 private:
   // It's not allowed to create an instance of `RtreeUtil`
   RtreeUtil() {}

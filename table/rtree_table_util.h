@@ -10,6 +10,7 @@
 #include "rocksdb/comparator.h"
 #include "rocksdb/options.h"
 #include "rocksdb/table.h"
+#include "util/coding.h"
 
 namespace rocksdb {
 
@@ -117,6 +118,15 @@ class RtreeKeyBuilder {
     key_.push_back(static_cast<uint8_t>(rocksdb::RtreeDimensionType::kDouble));
     const uint8_t* data = reinterpret_cast<const uint8_t*>(&dd);
     key_.insert(key_.end(), data, data + sizeof(double));
+  }
+  void push_string(const std::string& ss) {
+    key_.push_back(static_cast<uint8_t>(rocksdb::RtreeDimensionType::kString));
+    // The following code does the same as `PutLengthPrefixedSlice()`
+    // `5` is the maximum size of a VarInt32
+    char buf[5];
+    char* ptr = rocksdb::EncodeVarint32(buf, ss.size());
+    key_.insert(key_.end(), buf, ptr);
+    key_.insert(key_.end(), ss.data(), ss.data() + ss.size());
   }
   const char* data() const {
     return key_.data();

@@ -142,6 +142,8 @@ std::string RtreeUtil::EncodeKey(std::vector<Variant>& mbb) {
       case Variant::kBool:
       case Variant::kInt:
       case Variant::kString:
+        serialized.push_string(dimension.get_string());
+        break;
       default:
         assert(false && "EncodeKey: not yet implemented");
         // TODO vmx 2017-03-03: Handle other cases
@@ -164,6 +166,8 @@ void RtreeUtil::ExpandMbb(std::vector<Variant>& base,
     base_is_empty = true;
   }
   double val_double;
+  Slice val_slice;
+  std::string val_string;
   for (size_t ii = 0; expansion.size() > kMinInternalKeySize; ii++) {
     RtreeDimensionType type = static_cast<RtreeDimensionType>(*expansion.data());
     expansion.remove_prefix(sizeof(uint8_t));
@@ -183,6 +187,20 @@ void RtreeUtil::ExpandMbb(std::vector<Variant>& base,
         expansion.remove_prefix(sizeof(double));
         break;
       case RtreeDimensionType::kString:
+        GetLengthPrefixedSlice(&expansion, &val_slice);
+        val_string = std::string(val_slice.data(), val_slice.size());
+        if (base_is_empty) {
+          base.push_back(val_string);
+        }
+        else if (
+            // Min
+            (ii % 2 == 0 && val_string < base[ii].get_string()) ||
+            // Max
+            (ii % 2 == 1 && val_string > base[ii].get_string())) {
+          base[ii] = Variant(val_string);
+        }
+        // `GetLengthPrefixedSlice` already advanced the slice
+        break;
       default:
         assert(false && "not yet implemented");
         break;
@@ -260,6 +278,12 @@ bool RtreeUtil::IntersectMbb(
   double aa_double_max;
   double bb_double_min;
   double bb_double_max;
+
+  Slice aa_slice_min;
+  Slice aa_slice_max;
+  Slice bb_slice_min;
+  Slice bb_slice_max;
+
   // If the bounding boxes don't intersect in one dimension, they won't
   // intersect at all, hence we can return early
   for (size_t ii = 0; aa.size() > kMinInternalKeySize; ii++) {
@@ -268,27 +292,33 @@ bool RtreeUtil::IntersectMbb(
       aa_type_min = static_cast<RtreeDimensionType>(*aa.data());
       aa.remove_prefix(sizeof(uint8_t));
       switch(aa_type_min) {
-      case RtreeDimensionType::kDouble:
+        case RtreeDimensionType::kDouble:
           aa_double_min = *reinterpret_cast<const double*>(aa.data());
           aa.remove_prefix(sizeof(double));
-        break;
-      default:
-        assert(false && "Not all types are implemented yet");
-        // TODO vmx 2017-03-03: Handle other cases
-        break;
+          break;
+        case RtreeDimensionType::kString:
+          GetLengthPrefixedSlice(&aa, &aa_slice_min);
+          break;
+        default:
+          assert(false && "Not all types are implemented yet");
+          // TODO vmx 2017-03-03: Handle other cases
+          break;
       }
 
       bb_type_min = static_cast<RtreeDimensionType>(*bb.data());
       bb.remove_prefix(sizeof(uint8_t));
       switch(bb_type_min) {
-      case RtreeDimensionType::kDouble:
+        case RtreeDimensionType::kDouble:
           bb_double_min = *reinterpret_cast<const double*>(bb.data());
           bb.remove_prefix(sizeof(double));
-        break;
-      default:
-        assert(false && "Not all types are implemented yet");
-        // TODO vmx 2017-03-03: Handle other cases
-        break;
+          break;
+        case RtreeDimensionType::kString:
+          GetLengthPrefixedSlice(&bb, &bb_slice_min);
+          break;
+        default:
+          assert(false && "Not all types are implemented yet");
+          // TODO vmx 2017-03-03: Handle other cases
+          break;
       }
     }
     // Max
@@ -296,26 +326,32 @@ bool RtreeUtil::IntersectMbb(
       aa_type_max = static_cast<RtreeDimensionType>(*aa.data());
       aa.remove_prefix(sizeof(uint8_t));
       switch(aa_type_max) {
-      case RtreeDimensionType::kDouble:
+        case RtreeDimensionType::kDouble:
           aa_double_max = *reinterpret_cast<const double*>(aa.data());
           aa.remove_prefix(sizeof(double));
-        break;
-      default:
-        assert(false && "Not all types are implemented yet");
-        // TODO vmx 2017-03-03: Handle other cases
-        break;
+          break;
+        case RtreeDimensionType::kString:
+          GetLengthPrefixedSlice(&aa, &aa_slice_max);
+          break;
+        default:
+          assert(false && "Not all types are implemented yet");
+          // TODO vmx 2017-03-03: Handle other cases
+          break;
       }
 
       bb_type_max = static_cast<RtreeDimensionType>(*bb.data());
       bb.remove_prefix(sizeof(uint8_t));
       switch(bb_type_max) {
-      case RtreeDimensionType::kDouble:
+        case RtreeDimensionType::kDouble:
           bb_double_max = *reinterpret_cast<const double*>(bb.data());
           bb.remove_prefix(sizeof(double));
-        break;
-      default:
-        assert(false && "Not all types are implemented yet");
-        // TODO vmx 2017-03-03: Handle other cases
+          break;
+        case RtreeDimensionType::kString:
+          GetLengthPrefixedSlice(&bb, &bb_slice_max);
+          break;
+        default:
+          assert(false && "Not all types are implemented yet");
+          // TODO vmx 2017-03-03: Handle other cases
         break;
       }
 
@@ -325,6 +361,11 @@ bool RtreeUtil::IntersectMbb(
         switch(aa_type_min) {
           case RtreeDimensionType::kDouble:
             if(aa_double_min > bb_double_max) {
+              return false;
+            }
+            break;
+          case RtreeDimensionType::kString:
+            if (aa_slice_min.compare(bb_slice_max) > 0) {
               return false;
             }
             break;
@@ -340,6 +381,11 @@ bool RtreeUtil::IntersectMbb(
         switch(bb_type_min) {
           case RtreeDimensionType::kDouble:
             if(bb_double_min > aa_double_max) {
+              return false;
+            }
+            break;
+          case RtreeDimensionType::kString:
+            if (bb_slice_min.compare(aa_slice_max) > 0) {
               return false;
             }
             break;
@@ -460,12 +506,16 @@ int RtreeUtil::LowxComparatorCompare(const Slice& aa_const,
 
   for (size_t ii = 0; aa.size() > 0; ii++) {
     double aa_double;
+    Slice aa_slice;
     RtreeDimensionType aa_type = static_cast<RtreeDimensionType>(*aa.data());
     aa.remove_prefix(sizeof(uint8_t));
     switch(aa_type) {
       case RtreeDimensionType::kDouble:
           aa_double = *reinterpret_cast<const double*>(aa.data());
           aa.remove_prefix(sizeof(double));
+        break;
+      case RtreeDimensionType::kString:
+        GetLengthPrefixedSlice(&aa, &aa_slice);
         break;
       default:
         assert(false && "Not all types are implemented yet");
@@ -474,12 +524,16 @@ int RtreeUtil::LowxComparatorCompare(const Slice& aa_const,
     }
 
     double bb_double;
+    Slice bb_slice;
     RtreeDimensionType bb_type = static_cast<RtreeDimensionType>(*bb.data());
     bb.remove_prefix(sizeof(uint8_t));
     switch(bb_type) {
       case RtreeDimensionType::kDouble:
           bb_double = *reinterpret_cast<const double*>(bb.data());
           bb.remove_prefix(sizeof(double));
+        break;
+      case RtreeDimensionType::kString:
+        GetLengthPrefixedSlice(&bb, &bb_slice);
         break;
       default:
         assert(false && "Not all types are implemented yet");
@@ -495,6 +549,13 @@ int RtreeUtil::LowxComparatorCompare(const Slice& aa_const,
             if(aa_double < bb_double) {
               return -1;
             } else if (aa_double > bb_double) {
+              return 1;
+            }
+            break;
+          case RtreeDimensionType::kString:
+            if(aa_slice.compare(bb_slice) < 0) {
+              return -1;
+            } else if (aa_slice.compare(bb_slice) > 0) {
               return 1;
             }
             break;

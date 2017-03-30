@@ -88,6 +88,7 @@ using rocksdb::RateLimiter;
 using rocksdb::NewGenericRateLimiter;
 using rocksdb::IteratorContext;
 using rocksdb::RtreeTableIteratorContext;
+using rocksdb::RtreeKeyBuilder;
 
 using std::shared_ptr;
 
@@ -99,6 +100,7 @@ struct rocksdb_backup_engine_info_t { std::vector<BackupInfo> rep; };
 struct rocksdb_restore_options_t { RestoreOptions rep; };
 struct rocksdb_iterator_t        { Iterator*         rep; };
 struct rocksdb_writebatch_t      { WriteBatch        rep; };
+struct rocksdb_rtree_key_t       { RtreeKeyBuilder   rep; };
 struct rocksdb_snapshot_t        { const Snapshot*   rep; };
 struct rocksdb_iterator_context_t { IteratorContext* rep; };
 struct rocksdb_flushoptions_t    { FlushOptions      rep; };
@@ -891,15 +893,17 @@ void rocksdb_release_snapshot(
   delete snapshot;
 }
 
-//rocksdb_iterator_context_t* rocksdb_create_rtree_iterator_context(
-//    const char* data,
-//    size_t size) {
-//  rocksdb_iterator_context_t* result = new rocksdb_iterator_context_t;
-//  RtreeTableIteratorContext* iterator_context = new RtreeTableIteratorContext();
-//  iterator_context->query_mbb = std::string(data, size);
-//  result->rep = iterator_context;
-//  return result;
-//}
+rocksdb_iterator_context_t* rocksdb_create_rtree_iterator_context(
+    rocksdb_rtree_key_t* query_mbb) {
+  rocksdb_iterator_context_t* result = new rocksdb_iterator_context_t;
+  RtreeTableIteratorContext* iterator_context = new RtreeTableIteratorContext();
+  size_t query_mbb_size;
+  const char* query_mbb_data = rocksdb_rtree_key_data(query_mbb,
+                                                      &query_mbb_size);
+  iterator_context->query_mbb = std::string(query_mbb_data, query_mbb_size);
+  result->rep = iterator_context;
+  return result;
+}
 
 void rocksdb_release_rtree_iterator_context(
     rocksdb_iterator_context_t* ctx) {
@@ -1307,6 +1311,29 @@ const char* rocksdb_writebatch_data(rocksdb_writebatch_t* b, size_t* size) {
   return b->rep.Data().c_str();
 }
 
+rocksdb_rtree_key_t* rocksdb_rtree_key_create() {
+  return new rocksdb_rtree_key_t;
+}
+
+void rocksdb_rtree_key_destroy(rocksdb_rtree_key_t* key) {
+  delete key;
+}
+
+void rocksdb_rtree_key_push_double(rocksdb_rtree_key_t* key, double val) {
+  key->rep.push_double(val);
+}
+
+void rocksdb_rtree_key_push_string(rocksdb_rtree_key_t* key,
+                                   const char* val,
+                                   size_t size) {
+  key->rep.push_string(std::string(val, size));
+}
+
+const char* rocksdb_rtree_key_data(rocksdb_rtree_key_t* key, size_t* size) {
+  *size = key->rep.size();
+  return key->rep.data();
+}
+
 rocksdb_block_based_table_options_t*
 rocksdb_block_based_options_create() {
   return new rocksdb_block_based_table_options_t;
@@ -1473,7 +1500,6 @@ void rocksdb_options_set_rtree_table_factory(
         rocksdb::NewRtreeTableFactory(table_options->rep));
   }
 }
-
 
 rocksdb_options_t* rocksdb_options_create() {
   return new rocksdb_options_t;

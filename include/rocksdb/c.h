@@ -105,6 +105,7 @@ typedef struct rocksdb_snapshot_t        rocksdb_snapshot_t;
 typedef struct rocksdb_iterator_context_t rocksdb_iterator_context_t;
 typedef struct rocksdb_writablefile_t    rocksdb_writablefile_t;
 typedef struct rocksdb_writebatch_t      rocksdb_writebatch_t;
+typedef struct rocksdb_rtree_key_t       rocksdb_rtree_key_t;
 typedef struct rocksdb_writeoptions_t    rocksdb_writeoptions_t;
 typedef struct rocksdb_universal_compaction_options_t rocksdb_universal_compaction_options_t;
 typedef struct rocksdb_livefiles_t     rocksdb_livefiles_t;
@@ -289,13 +290,12 @@ extern ROCKSDB_LIBRARY_API void rocksdb_release_snapshot(
     rocksdb_t* db, const rocksdb_snapshot_t* snapshot);
 
 
-//extern ROCKSDB_LIBRARY_API
-//rocksdb_iterator_context_t* rocksdb_create_rtree_iterator_context(
-//    const char* data,
-//    size_t size);
-//
-//extern ROCKSDB_LIBRARY_API void rocksdb_release_rtree_iterator_context(
-//    rocksdb_iterator_context_t* ctx);
+extern ROCKSDB_LIBRARY_API
+rocksdb_iterator_context_t* rocksdb_create_rtree_iterator_context(
+    rocksdb_rtree_key_t* query_mbb);
+
+extern ROCKSDB_LIBRARY_API void rocksdb_release_rtree_iterator_context(
+    rocksdb_iterator_context_t* ctx);
 
 /* Returns NULL if property name is unknown.
    Else returns a pointer to a malloc()-ed null-terminated value. */
@@ -444,6 +444,18 @@ extern ROCKSDB_LIBRARY_API void rocksdb_writebatch_iterate(
     void (*deleted)(void*, const char* k, size_t klen));
 extern ROCKSDB_LIBRARY_API const char* rocksdb_writebatch_data(
     rocksdb_writebatch_t*, size_t* size);
+
+/* R-tree keys */
+
+extern ROCKSDB_LIBRARY_API rocksdb_rtree_key_t* rocksdb_rtree_key_create();
+extern ROCKSDB_LIBRARY_API void rocksdb_rtree_key_destroy(
+    rocksdb_rtree_key_t* key);
+extern ROCKSDB_LIBRARY_API void rocksdb_rtree_key_push_double(
+    rocksdb_rtree_key_t* key, double val);
+extern ROCKSDB_LIBRARY_API void rocksdb_rtree_key_push_string(
+    rocksdb_rtree_key_t* key, const char* val, size_t size);
+extern ROCKSDB_LIBRARY_API const char* rocksdb_rtree_key_data(
+    rocksdb_rtree_key_t* key, size_t* size);
 
 /* Block based table options */
 

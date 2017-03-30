@@ -7,7 +7,6 @@ int main(int argc, char **argv) {
   // Set the Table, Memtable and Comparator for the R-tree
   rocksdb_options_t *options = rocksdb_options_create();
   rocksdb_rtree_table_options_t *table_options = rocksdb_rtree_options_create();
-  rocksdb_rtree_options_set_dimensions(table_options, 2);
   rocksdb_options_set_rtree_table_factory(options, table_options);
   rocksdb_options_set_memtable_skip_list_mbb(options);
   rocksdb_comparator_t* comparator = rocksdb_comparator_lowx_create();
@@ -18,30 +17,75 @@ int main(int argc, char **argv) {
   rocksdb_options_set_create_if_missing(options, 1);
   char *err = NULL;
   db = rocksdb_open(options, "/tmp/rocksdb_c_rtree_example", &err);
+  rocksdb_writeoptions_t *writeoptions = rocksdb_writeoptions_create();
 
   // The data that you want to insert into your database
-  rocksdb_writeoptions_t *writeoptions = rocksdb_writeoptions_create();
-  const double augsburg_key[4] = {10.75, 11.11, 48.24, 48.50};
-  const char *augsburg_value = "augsburg";
-  rocksdb_put(db, writeoptions,
-              (const char *)augsburg_key, 4 * sizeof(double),
-              augsburg_value, strlen(augsburg_value) + 1,
+  rocksdb_rtree_key_t* augsburg_key = rocksdb_rtree_key_create();
+  rocksdb_rtree_key_push_double(augsburg_key, 10.75);
+  rocksdb_rtree_key_push_double(augsburg_key, 11.11);
+  rocksdb_rtree_key_push_double(augsburg_key, 48.24);
+  rocksdb_rtree_key_push_double(augsburg_key, 48.50);
+  const char *augsburg_cityhall = "Rathausplatz";
+  rocksdb_rtree_key_push_string(augsburg_key,
+                                augsburg_cityhall,
+                                strlen(augsburg_cityhall));
+  rocksdb_rtree_key_push_string(augsburg_key,
+                                augsburg_cityhall,
+                                strlen(augsburg_cityhall));
+  const char* augsburg_value = "augsburg";
+  size_t augsburg_key_size;
+  const char* augsburg_key_data = rocksdb_rtree_key_data(augsburg_key,
+                                                         &augsburg_key_size);
+  rocksdb_put(db,
+              writeoptions,
+              augsburg_key_data,
+              augsburg_key_size,
+              augsburg_value,
+              strlen(augsburg_value) + 1,
               &err);
-  const double alameda_key[4] = {-122.34, -122.22, 37.71, 37.80};
-  const char *alameda_value = "alameda";
-  rocksdb_put(db, writeoptions,
-              (const char *)alameda_key, 4 * sizeof(double),
-              alameda_value, strlen(alameda_value) + 1,
+  rocksdb_rtree_key_destroy(augsburg_key);
+
+  rocksdb_rtree_key_t* alameda_key = rocksdb_rtree_key_create();
+  rocksdb_rtree_key_push_double(alameda_key, -122.34);
+  rocksdb_rtree_key_push_double(alameda_key, -122.22);
+  rocksdb_rtree_key_push_double(alameda_key, 37.71);
+  rocksdb_rtree_key_push_double(alameda_key, 37.80);
+  const char *alameda_cityhall = "Santa Clara Avenue";
+  rocksdb_rtree_key_push_string(alameda_key,
+                                alameda_cityhall,
+                                strlen(alameda_cityhall));
+  rocksdb_rtree_key_push_string(alameda_key,
+                                alameda_cityhall,
+                                strlen(alameda_cityhall));
+  const char* alameda_value = "alameda";
+  size_t alameda_key_size;
+  const char* alameda_key_data = rocksdb_rtree_key_data(alameda_key,
+                                                        &alameda_key_size);
+  rocksdb_put(db,
+              writeoptions,
+              alameda_key_data,
+              alameda_key_size,
+              alameda_value,
+              strlen(alameda_value) + 1,
               &err);
+  rocksdb_rtree_key_destroy(alameda_key);
 
   // Specify the desired bounding box on the iterator
   rocksdb_readoptions_t *readoptions = rocksdb_readoptions_create();
-  const double query[4] = {10, 11, 48, 49};
-  //const double query[4] = {-150, 0, 20, 40};
-  //const double query[4] = {-180, 180, -90, 90};
+  const double query_coords[4] = {10.0, 11.0, 48.0, 49.0};
+  //const double query_coords[4] = {-150.0, 0.0, 20.0, 40.0};
+  //const double query_coords[4] = {-180.0, 180.0, -90.0, 90.0};
+  rocksdb_rtree_key_t* query = rocksdb_rtree_key_create();
+  rocksdb_rtree_key_push_double(query, query_coords[0]);
+  rocksdb_rtree_key_push_double(query, query_coords[1]);
+  rocksdb_rtree_key_push_double(query, query_coords[2]);
+  rocksdb_rtree_key_push_double(query, query_coords[3]);
+  rocksdb_rtree_key_push_string(query, "A", strlen("A"));
+  rocksdb_rtree_key_push_string(query, "Z", strlen("Z"));
+
   rocksdb_iterator_context_t *iterator_context =
-      rocksdb_create_rtree_iterator_context((const char *)query,
-                                            4 * sizeof(double));
+      rocksdb_create_rtree_iterator_context(query);
+  rocksdb_rtree_key_destroy(query);
   rocksdb_readoptions_set_iterator_context(readoptions, iterator_context);
   rocksdb_iterator_t *iter = rocksdb_create_iterator(db, readoptions);
 

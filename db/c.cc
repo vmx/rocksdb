@@ -898,9 +898,8 @@ rocksdb_iterator_context_t* rocksdb_create_rtree_iterator_context(
   rocksdb_iterator_context_t* result = new rocksdb_iterator_context_t;
   RtreeTableIteratorContext* iterator_context = new RtreeTableIteratorContext();
   size_t query_mbb_size;
-  const char* query_mbb_data = rocksdb_rtree_key_data(query_mbb,
-                                                      &query_mbb_size);
-  iterator_context->query_mbb = std::string(query_mbb_data, query_mbb_size);
+  iterator_context->query_mbb = std::string(query_mbb->rep.data(),
+                                            query_mbb->rep.size());
   result->rep = iterator_context;
   return result;
 }

@@ -395,6 +395,7 @@ TESTS = \
 	cuckoo_table_builder_test \
 	cuckoo_table_reader_test \
 	cuckoo_table_db_test \
+	rtree_table_reader_test \
 	flush_job_test \
 	wal_manager_test \
 	listener_test \
@@ -1215,6 +1216,9 @@ cuckoo_table_reader_test: table/cuckoo_table_reader_test.o $(LIBOBJECTS) $(TESTH
 	$(AM_LINK)
 
 cuckoo_table_db_test: db/cuckoo_table_db_test.o $(LIBOBJECTS) $(TESTHARNESS)
+	$(AM_LINK)
+
+rtree_table_reader_test: table/rtree_table_reader_test.o $(LIBOBJECTS) $(TESTHARNESS)
 	$(AM_LINK)
 
 listener_test: db/listener_test.o db/db_test_util.o $(LIBOBJECTS) $(TESTHARNESS)

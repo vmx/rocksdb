@@ -273,6 +273,7 @@ MAIN_SOURCES =                                                    \
   table/block_test.cc                                                   \
   table/cuckoo_table_builder_test.cc                                    \
   table/cuckoo_table_reader_test.cc                                     \
+  table/rtree_table_reader_test.cc                                      \
   table/full_filter_block_test.cc                                       \
   table/merger_test.cc                                                  \
   table/table_reader_bench.cc                                           \

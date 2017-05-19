@@ -34,13 +34,13 @@ namespace point_sort {
       j = i -1;
       done = false;
       while(!done) {
-	if(array[j].getX() > p.getX()) {
-	  array[j+1] = array[j];
-	  j--;
-	  if(j < begin)
-	    done = true;
-	} else
-	  done = true;
+        if(array[j].getX() > p.getX()) {
+          array[j+1] = array[j];
+          j--;
+          if(j < begin)
+            done = true;
+        } else
+          done = true;
       }
       array[j+1] = p;
     }

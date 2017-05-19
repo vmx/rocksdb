@@ -143,8 +143,8 @@ void markOne(PSTPoint* array, int index, int blockSize, const PSTPoint& s) {
 }
 
 void form_buffer(PSTPoint* array, int begin, int blockSize,
-		 int indexOfLastBufferZero, int indexOfLastBufferOne,
-		 const PSTPoint& s) {
+                 int indexOfLastBufferZero, int indexOfLastBufferOne,
+                 const PSTPoint& s) {
   // form zero buffer
   int lastZero = simple_partition(array,begin,indexOfLastBufferZero,s);
   /////////////////////////////////////////////////////////////////////////////
@@ -218,45 +218,45 @@ void algorithm_B(PSTPoint* array, int begin, int end, const PSTPoint& s) {
     int zeroesTotal = 0;
     for(int i = 0; blBegin + i <= blEnd; i++)
       if(isZero(array[blBegin+i],s))
-	zeroesTotal++;
+        zeroesTotal++;
     int c0 = 0, c1 = 0, rank;
     for(int i = 0; blBegin + i <= blEnd; i++) {
       if(isZero(array[blBegin+i],s)) {
-	rank = c0;
-	c0++;
+        rank = c0;
+        c0++;
       } else {
-	rank = zeroesTotal + c1;
-	c1++;
+        rank = zeroesTotal + c1;
+        c1++;
       }
       if(rank == i)
-	markOne(array,i,blockSize,s);
+        markOne(array,i,blockSize,s);
       else
-	markZero(array,i,blockSize,s);
+        markZero(array,i,blockSize,s);
     }
     // actually sort elements
     for(int k = 0; blBegin + k <= blEnd; k++) {
       if(isZero(array[k],s)) {
-	int i = k;
-	do {
-	  int l = 0;
-	  if(isOne(array[k+blBegin],s)) l = c0;
-	  int q = 0;
-	  for(int j = 0; j < i-1; j++) {
-	    if(j != k && isZero(array[j],s) &&
-	       isOne(array[blBegin+j],s) == isOne(array[blBegin+k],s))
-	      q++;
-	  }
-	  int ito = l;
-	  bool done = false;
-	  do {
-	    while(isOne(array[ito],s)) ito++;
-	    if(q-- > 0) ito++;
-	    else done = true;
-	  } while(!done);
-	  PSTArray::swap(array,blBegin+ito,blBegin+k);
-	  markOne(array,ito,blockSize,s);
-	  i = ito;
-	} while(i != k);
+        int i = k;
+        do {
+          int l = 0;
+          if(isOne(array[k+blBegin],s)) l = c0;
+          int q = 0;
+          for(int j = 0; j < i-1; j++) {
+            if(j != k && isZero(array[j],s) &&
+               isOne(array[blBegin+j],s) == isOne(array[blBegin+k],s))
+              q++;
+          }
+          int ito = l;
+          bool done = false;
+          do {
+            while(isOne(array[ito],s)) ito++;
+            if(q-- > 0) ito++;
+            else done = true;
+          } while(!done);
+          PSTArray::swap(array,blBegin+ito,blBegin+k);
+          markOne(array,ito,blockSize,s);
+          i = ito;
+        } while(i != k);
       }
     }
   }
@@ -267,20 +267,18 @@ void algorithm_B(PSTPoint* array, int begin, int end, const PSTPoint& s) {
       start < end;
       start += blockSize) {
     int i = start;
-    // find the blocksize'th zero     
+    // find the blocksize'th zero
     int nZero = 0;
-    bool prevElementWasZero = true;
     while(nZero < blockSize && ++i <= end) {
       if(isZero(array[i],s)) {
-	nZero++;
-	prevElementWasZero = true;
+        nZero++;
       }
     }
     // if zeroes not contiguous, partition them
     if(i != start+blockSize)
       simple_partition(array,start,i,s);
   }
-  
+
   /////////////////////////////////////////////////////////////////////////////
   // Step 4: rearrange blocks                                                //
   /////////////////////////////////////////////////////////////////////////////
@@ -308,33 +306,33 @@ void algorithm_B(PSTPoint* array, int begin, int end, const PSTPoint& s) {
   //   if(isZero(array[k],s)) {
   //     int i = k;
   //     do {
-  // 	int l = 0;
-  // 	if(isOne(array[k+blBegin],s)) l = c0;
-  // 	int q = 0;
-  // 	for(int j = 0; j < i-1; j++) {
-  // 	  if(j != k && isZero(array[j],s) &&
-  // 	     isOne(array[blBegin+j],s) == isOne(array[blBegin+k],s))
-  // 	    q++;
-  // 	}
-  // 	int ito = l;
-  // 	bool done = false;
-  // 	do {
-  // 	  while(isOne(array[ito],s)) ito++;
-  // 	  if(q-- > 0) ito++;
-  // 	  else done = true;
-  // 	} while(!done);
-  // 	PSTArray::swap(array,blBegin+ito,blBegin+k);
-  // 	markOne(array,ito,blockSize,s);
-  // 	i = ito;
+  //         int l = 0;
+  //         if(isOne(array[k+blBegin],s)) l = c0;
+  //         int q = 0;
+  //         for(int j = 0; j < i-1; j++) {
+  //           if(j != k && isZero(array[j],s) &&
+  //              isOne(array[blBegin+j],s) == isOne(array[blBegin+k],s))
+  //             q++;
+  //         }
+  //         int ito = l;
+  //         bool done = false;
+  //         do {
+  //           while(isOne(array[ito],s)) ito++;
+  //           if(q-- > 0) ito++;
+  //           else done = true;
+  //         } while(!done);
+  //         PSTArray::swap(array,blBegin+ito,blBegin+k);
+  //         markOne(array,ito,blockSize,s);
+  //         i = ito;
   //     } while(i != k);
   //   }
   // }
-  
-  
+
+
   /////////////////////////////////////////////////////////////////////////////
   // Step 5: clean up any remaining zeroes in the last block                 //
   /////////////////////////////////////////////////////////////////////////////
-  
+
 }
 
 ///////////////////////////////////////////////////////////////////////////////

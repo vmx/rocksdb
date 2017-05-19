@@ -10,13 +10,13 @@ all: test_sort test_partition test_pst test_leda
 
 # executables
 test_leda:
-	g++ $(CXXFLAGS) -L$(LEDAROOT) -I$(LEDAROOT)/incl test_leda.cpp -lleda -lX11 -lm -o test_leda
+	g++ $(CXXFLAGS) -L$(LEDAROOT) -I$(LEDAROOT)/incl test_leda.cc -lleda -lX11 -lm -o test_leda
 
-test_pst: PSTPoint.o sort/heap_sort.o InPlacePST.o control_utilities.o array_utilities.o test_pst.cpp
+test_pst: PSTPoint.o sort/heap_sort.o InPlacePST.o control_utilities.o array_utilities.o test_pst.cc
 
-test_sort: PSTPoint.o array_utilities.o sort/insertion_sort.o sort/heap_sort.o test_sort.cpp
+test_sort: PSTPoint.o array_utilities.o sort/insertion_sort.o sort/heap_sort.o test_sort.cc
 
-test_partition: PSTPoint.o array_utilities.o sort/heap_sort.o sort/stable_01_sort.o test_partition.cpp
+test_partition: PSTPoint.o array_utilities.o sort/heap_sort.o sort/stable_01_sort.o test_partition.cc
 
 # object files
 InPlacePST.o: PSTPoint.o sort/heap_sort.o InPlacePST.h

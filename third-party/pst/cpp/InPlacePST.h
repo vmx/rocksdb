@@ -35,18 +35,18 @@ namespace PrioritySearchTree {
     void inPlaceSort(int begin, int end, const PSTPoint& s);
     int numberOfChildren(int index);
     bool isLeaf(int index);
-    void explore(int indexP, coord_t ymin, vector<PSTPoint>* points);
+    void explore(int indexP, coordy_t ymin, vector<PSTPoint>* points);
     PSTPoint getPoint(int n); // index base 1
     void printTree(int index, int spaces);
   public:
-    coord_t POSITIVE_INFINITY;
-    coord_t NEGATIVE_INFINITY;
+    coordx_t POSITIVE_INFINITY;
+    coordy_t NEGATIVE_INFINITY;
     InPlacePST(PSTPoint* points, int n);
     void printArray();
-    PSTPoint leftMostNE(coord_t xmin, coord_t ymin);
-    PSTPoint highestNE(coord_t xmin, coord_t ymin);
-    PSTPoint highest3Sided(coord_t xmin, coord_t xmax, coord_t ymin);
-    vector<PSTPoint>* enumerate3Sided(coord_t xmin, coord_t xmax, coord_t ymin);
+    PSTPoint leftMostNE(coordx_t xmin, coordy_t ymin);
+    PSTPoint highestNE(coordx_t xmin, coordy_t ymin);
+    PSTPoint highest3Sided(coordx_t xmin, coordx_t xmax, coordy_t ymin);
+    vector<PSTPoint>* enumerate3Sided(coordx_t xmin, coordx_t xmax, coordy_t ymin);
     void printTree();
   };
 }

@@ -8,7 +8,7 @@
 //                                                                           //
 // MODULE:  Priority Search Tree                                             //
 //                                                                           //
-// NOTES:   None.                                                            // 
+// NOTES:   None.                                                            //
 //                                                                           //
 ///////////////////////////////////////////////////////////////////////////////
 #include <iostream>

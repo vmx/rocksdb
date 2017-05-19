@@ -61,8 +61,8 @@ void downHeap(PSTPoint* array, int v, int begin, int end) {
     if(begin + w+1 <= end)
       // if right child is greater than left child
       if(array[begin + w+1] > array[begin + w])
-	// use right child
-	w++;
+        // use right child
+        w++;
     // if larger child is less than its parent
     if(!(array[begin + w] > array[begin + v]))
       return;

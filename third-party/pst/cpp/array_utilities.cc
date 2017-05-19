@@ -4,38 +4,38 @@
 //                           (All rights reserved)                           //
 ///////////////////////////////////////////////////////////////////////////////
 //                                                                           //
-// FILE:    PSTPoint.cpp                                                     //
+// FILE:    array_utilities.cpp                                              //
 //                                                                           //
 // MODULE:  Priority Search Tree                                             //
 //                                                                           //
-// NOTES:   None.                                                            //
+// NOTES:   Provides useful functions for working with arrays.               //
 //                                                                           //
 ///////////////////////////////////////////////////////////////////////////////
-#include "PSTPoint.h"
 #include <algorithm>
+#include <iostream>
+#include "PSTPoint.h"
+#include "array_utilities.h"
 
-namespace PrioritySearchTree {
-  void PSTPoint::setX(coord_t new_x) {
-    x = new_x;
+using namespace std;
+
+namespace PSTArray {
+  void print(PSTPoint* points, int nPoints) {
+    print(points,0,nPoints-1);
   }
-
-  void PSTPoint::setY(coord_t new_y) {
-    y = new_y;
+  void print(PSTPoint* points, int begin, int end) {
+    cout << "{ " << points[begin];
+    for(int i = begin+1; i <= end; i++)
+      cout << " " << points[i];
+    cout << " }" << endl;
   }
-
-  bool PSTPoint::yGreaterThan(const PSTPoint& p) {
-    return y > p.getY();
+  void swap(PSTPoint* points, int a, int b) {
+    //PSTPoint temp = points[a];
+    //points[a] = points[b];
+    //points[b] = temp;
+    std::swap(points[a], points[b]);
   }
-
-  bool PSTPoint::yLessThan(const PSTPoint& p) {
-    return y < p.getY();
-  }
-
-  bool PSTPoint::operator<(const PSTPoint& p) {
-    return x < p.getX();
-  }
-
-  bool PSTPoint::operator>(const PSTPoint& p) {
-    return x > p.getX();
+  // copies from a to b
+  void copy(PSTPoint* a, PSTPoint* b, int n) {
+    while(--n >= 0) b[n] = a[n];
   }
 }

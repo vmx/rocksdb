@@ -30,22 +30,24 @@
 using std::basic_ostream;
 
 namespace PrioritySearchTree {
-  typedef int coord_t;
-  
+  typedef double coordx_t;
+  typedef int coordy_t;
+
   class PSTPoint {
-    coord_t x, y;
-    void setX(coord_t new_x);
-    void setY(coord_t new_y);
+    coordx_t x;
+    coordy_t y;
+    void setX(coordx_t new_x);
+    void setY(coordy_t new_y);
   public:
-    PSTPoint(coord_t x = 0, coord_t y = 0)
+    PSTPoint(coordx_t x = 0, coordy_t y = 0)
       : x(x), y(y)
     { }
     PSTPoint(const PSTPoint& copy)
       : x(copy.getX()), y(copy.getY())
     { }
-    coord_t getX() const { return x; }
-    coord_t getY() const { return y; }
-  
+    coordx_t getX() const { return x; }
+    coordy_t getY() const { return y; }
+
     /////////////////////////////////////////////////////////////////////////////
     // Implemented in PSTPoint.cpp                                             //
     /////////////////////////////////////////////////////////////////////////////
@@ -60,7 +62,7 @@ namespace PrioritySearchTree {
   /////////////////////////////////////////////////////////////////////////////
   template <typename CharT, typename Traits>
   basic_ostream<CharT, Traits>& operator<<(basic_ostream<CharT, Traits>& out,
-					   const PSTPoint& p) {
+                                           const PSTPoint& p) {
     return out<< "(" << p.getX() << "," << p.getY() << ")";
   }
 }

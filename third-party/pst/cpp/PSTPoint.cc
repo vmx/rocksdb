@@ -4,36 +4,38 @@
 //                           (All rights reserved)                           //
 ///////////////////////////////////////////////////////////////////////////////
 //                                                                           //
-// FILE:    array_utilities.cpp                                              //
+// FILE:    PSTPoint.cpp                                                     //
 //                                                                           //
 // MODULE:  Priority Search Tree                                             //
 //                                                                           //
-// NOTES:   Provides useful functions for working with arrays.               //
+// NOTES:   None.                                                            //
 //                                                                           //
 ///////////////////////////////////////////////////////////////////////////////
-#include <iostream>
 #include "PSTPoint.h"
-#include "array_utilities.h"
+#include <algorithm>
 
-using namespace std;
+namespace PrioritySearchTree {
+  void PSTPoint::setX(coordx_t new_x) {
+    x = new_x;
+  }
 
-namespace PSTArray {
-  void print(PSTPoint* points, int nPoints) {
-    print(points,0,nPoints-1);
+  void PSTPoint::setY(coordy_t new_y) {
+    y = new_y;
   }
-  void print(PSTPoint* points, int begin, int end) {
-    cout << "{ " << points[begin];
-    for(int i = begin+1; i <= end; i++)
-      cout << " " << points[i];
-    cout << " }" << endl;
+
+  bool PSTPoint::yGreaterThan(const PSTPoint& p) {
+    return y > p.getY();
   }
-  void swap(PSTPoint* points, int a, int b) {
-    PSTPoint temp = points[a];
-    points[a] = points[b];
-    points[b] = temp;
+
+  bool PSTPoint::yLessThan(const PSTPoint& p) {
+    return y < p.getY();
   }
-  // copies from a to b
-  void copy(PSTPoint* a, PSTPoint* b, int n) {
-    while(--n >= 0) b[n] = a[n];
+
+  bool PSTPoint::operator<(const PSTPoint& p) {
+    return x < p.getX();
+  }
+
+  bool PSTPoint::operator>(const PSTPoint& p) {
+    return x > p.getX();
   }
 }

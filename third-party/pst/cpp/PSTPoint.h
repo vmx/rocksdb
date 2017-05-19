@@ -39,8 +39,8 @@ namespace PrioritySearchTree {
     void setX(coordx_t new_x);
     void setY(coordy_t new_y);
   public:
-    PSTPoint(coordx_t x = 0, coordy_t y = 0)
-      : x(x), y(y)
+    PSTPoint(coordx_t xx = 0, coordy_t yy = 0)
+      : x(xx), y(yy)
     { }
     PSTPoint(const PSTPoint& copy)
       : x(copy.getX()), y(copy.getY())

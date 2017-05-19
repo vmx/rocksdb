@@ -92,6 +92,10 @@ struct BlockBasedTableOptions {
     // it is ready to be used in production.
     // A two-level index implementation. Both levels are binary search indexes.
     kTwoLevelIndexSearch,
+
+    // Build a priority search tree. This is a very special purpose index
+    // that is currently only used for "Noise"
+    kPstSearch,
   };
 
   IndexType index_type = kBinarySearch;

@@ -116,6 +116,11 @@ LIB_SOURCES =                                                   \
   table/sst_file_writer.cc                                      \
   table/table_properties.cc                                     \
   table/two_level_iterator.cc                                   \
+  third-party/pst/cpp/array_utilities.cc                        \
+  third-party/pst/cpp/base_util.cc                              \
+  third-party/pst/cpp/InPlacePST.cc                             \
+  third-party/pst/cpp/PSTPoint.cc                               \
+  third-party/pst/cpp/sort/heap_sort.cc                         \
   tools/dump/db_dump_tool.cc                                    \
   util/arena.cc                                                 \
   util/auto_roll_logger.cc                                      \

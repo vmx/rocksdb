@@ -17,11 +17,15 @@
 #include <list>
 #include <string>
 #include <unordered_map>
+#include <iostream>
 
 #include "rocksdb/comparator.h"
 #include "table/block_based_table_factory.h"
 #include "table/block_builder.h"
 #include "table/format.h"
+
+#include "third-party/pst/cpp/InPlacePST.h"
+#include "third-party/pst/cpp/array_utilities.h"
 
 namespace rocksdb {
 // The interface for building index.
@@ -332,4 +336,50 @@ class PartitionedIndexBuilder : public IndexBuilder {
   // true if it should cut the next filter partition block
   bool cut_filter_block = false;
 };
+
+
+// This index builder builds a priority search tree
+//
+// It's a special purpose index for "Noise".
+class PstIndexBuilder : public IndexBuilder {
+ public:
+  explicit PstIndexBuilder(const InternalKeyComparator* comparator)
+      : IndexBuilder(comparator) {}
+
+  virtual void AddIndexEntry(std::string* last_key_in_current_block,
+                             const Slice* first_key_in_next_block,
+                             const BlockHandle& block_handle) override {}
+
+  virtual void OnKeyAdded(const Slice& key) override {
+    std::cout << "vmx: index_builder: pst: onkeyadded" << std::endl;
+    size_t n = 13;
+    PrioritySearchTree::PSTPoint *points = new PrioritySearchTree::PSTPoint[n];
+    PrioritySearchTree::PSTPoint p1(15,7);
+    PrioritySearchTree::PSTPoint p2(16,2);
+    points[0] = p1;
+    points[1] = p2;
+    PSTArray::print(points,n);
+    PrioritySearchTree::InPlacePST ippst(points,n);
+    delete points;
+  }
+
+
+  using IndexBuilder::Finish;
+  virtual Status Finish(
+      IndexBlocks* index_blocks,
+      const BlockHandle& last_partition_block_handle) override {
+    return Status::OK();
+  }
+
+  virtual size_t EstimatedSize() const override {
+    //return pst_block_.size();
+    return 0;
+  }
+
+  friend class PartitionedIndexBuilder;
+
+ private:
+  std::string pst_block_;
+};
+
 }  // namespace rocksdb

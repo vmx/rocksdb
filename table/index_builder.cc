@@ -42,6 +42,9 @@ IndexBuilder* IndexBuilder::CreateIndexBuilder(
     case BlockBasedTableOptions::kTwoLevelIndexSearch: {
       return PartitionedIndexBuilder::CreateIndexBuilder(comparator, table_opt);
     }
+    case BlockBasedTableOptions::kPstSearch: {
+      return new PstIndexBuilder(comparator);
+    }
     default: {
       assert(!"Do not recognize the index type ");
       return nullptr;

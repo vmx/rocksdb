@@ -683,7 +683,9 @@ static std::unordered_map<std::string, BlockBasedTableOptions::IndexType>
         {"kBinarySearch", BlockBasedTableOptions::IndexType::kBinarySearch},
         {"kHashSearch", BlockBasedTableOptions::IndexType::kHashSearch},
         {"kTwoLevelIndexSearch",
-         BlockBasedTableOptions::IndexType::kTwoLevelIndexSearch}};
+         BlockBasedTableOptions::IndexType::kTwoLevelIndexSearch},
+        {"kPstSearch",
+         BlockBasedTableOptions::IndexType::kPstSearch}};
 
 static std::unordered_map<std::string, EncodingType> encoding_type_string_map =
     {{"kPlain", kPlain}, {"kPrefix", kPrefix}};

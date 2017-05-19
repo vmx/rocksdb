@@ -7,5 +7,5 @@
 	remote = /home/vmx/src/c/pst/PrioritySearchTree
 	branch = master
 	commit = 9edb3def79092f560e25fd154a972fb5bc60e912
-	parent = 362ba9b02e97691a1ca53508574f183ec43ebd04
+	parent = 5ef3ad276dccb79714f2f6372fac8070f49f356c
 	cmdver = 0.3.1

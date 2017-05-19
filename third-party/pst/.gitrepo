@@ -1,0 +1,11 @@
+; DO NOT EDIT (unless you know what you are doing)
+;
+; This subdirectory is a git "subrepo", and this file is maintained by the
+; git-subrepo command. See https://github.com/git-commands/git-subrepo#readme
+;
+[subrepo]
+	remote = /home/vmx/src/c/pst/PrioritySearchTree
+	branch = master
+	commit = 9edb3def79092f560e25fd154a972fb5bc60e912
+	parent = 362ba9b02e97691a1ca53508574f183ec43ebd04
+	cmdver = 0.3.1

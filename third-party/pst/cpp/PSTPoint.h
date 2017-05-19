@@ -27,6 +27,12 @@
 
 #include <ostream>
 #include <algorithm>
+#include <vector>
+#include <cstdio>
+
+#include "base_util.h"
+
+using std::vector;
 using std::basic_ostream;
 
 namespace PrioritySearchTree {
@@ -55,6 +61,10 @@ namespace PrioritySearchTree {
     bool operator<(const PSTPoint& p); // compares x coordinate
     bool yGreaterThan(const PSTPoint& p);
     bool yLessThan(const PSTPoint& p);
+
+    int load(FILE *fp);
+    void load(char *filename);
+    vector<unsigned char> serialize();
   };
 
   /////////////////////////////////////////////////////////////////////////////

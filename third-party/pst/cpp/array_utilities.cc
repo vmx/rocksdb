@@ -11,7 +11,6 @@
 // NOTES:   Provides useful functions for working with arrays.               //
 //                                                                           //
 ///////////////////////////////////////////////////////////////////////////////
-#include <algorithm>
 #include <iostream>
 #include "PSTPoint.h"
 #include "array_utilities.h"
@@ -29,10 +28,9 @@ namespace PSTArray {
     cout << " }" << endl;
   }
   void swap(PSTPoint* points, int a, int b) {
-    //PSTPoint temp = points[a];
-    //points[a] = points[b];
-    //points[b] = temp;
-    std::swap(points[a], points[b]);
+    PSTPoint temp = points[a];
+    points[a] = points[b];
+    points[b] = temp;
   }
   // copies from a to b
   void copy(PSTPoint* a, PSTPoint* b, int n) {

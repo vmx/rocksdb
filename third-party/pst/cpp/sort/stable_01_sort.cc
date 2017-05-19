@@ -125,7 +125,7 @@ void algorithm_A(PSTPoint* array, int begin, int end, const PSTPoint& s) {
 ///////////////////////////////////////////////////////////////////////////////
 
 int smallestPowerOf2GreaterThanLog2Of(int x) {
-  return pow(2,ceil(log2(ceil(log2(x)))));
+  return static_cast<int>(pow(2,ceil(log2(ceil(log2(x))))));
 }
 
 void flip(PSTPoint* array, int index, int blockSize) {

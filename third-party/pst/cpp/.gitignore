@@ -5,3 +5,4 @@ test_pst
 .nfs00000000013a42d20000088c
 test_leda
 test_partition
+test_pst_serialize

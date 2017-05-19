@@ -18,19 +18,18 @@
 #include "PSTPoint.h"
 #include "InPlacePST.h"
 #include "array_utilities.h"
-#include "control_utilities.h"
 
 using namespace std;
 using namespace PrioritySearchTree;
 
 int main(int argv, char** argc) {
-  const int MAX_POINTS_DISPLAY = 32;
+  const int MAX_POINTS_DISPLAY = 16;
   time_t before, after;
   int n, qi, ei;
   /////////////////////////////////////////////////////////////////////////////
   // Seed the PRNG                                                           //
   /////////////////////////////////////////////////////////////////////////////
-  srand( time(0) );
+  srand( static_cast<unsigned int>(time(0)) );
   /////////////////////////////////////////////////////////////////////////////
   // Ensure the user has entered required parameters, otherwise print        //
   // a helpful message and bail out.                                         //
@@ -82,6 +81,8 @@ int main(int argv, char** argc) {
     cout << "Tree: " << endl;
     ippst.printTree();
   }
+  for(int i=0;i<n;++i)
+      cout << points[i] << endl;
   /////////////////////////////////////////////////////////////////////////////
   // leftMostNE                                                              //
   /////////////////////////////////////////////////////////////////////////////
@@ -103,6 +104,9 @@ int main(int argv, char** argc) {
     result = ippst.highestNE(rand() % n, rand() % n);
   after = time(0);
   cout << "took: " << (after - before) << endl;
+
+
+  ippst.printArray();
   /////////////////////////////////////////////////////////////////////////////
   // highest3Sided                                                           //
   /////////////////////////////////////////////////////////////////////////////
@@ -115,6 +119,7 @@ int main(int argv, char** argc) {
     xmax = xmin + (rand() % (n - xmin));
     ymin = rand() % n;
     result = ippst.highest3Sided(xmin,xmax,ymin);
+    cout << result << endl;
   }
   after = time(0);
   cout << "took: " << (after - before) << endl;
@@ -123,7 +128,7 @@ int main(int argv, char** argc) {
   /////////////////////////////////////////////////////////////////////////////
   vector<PSTPoint>* results;
   cout << ei << " iterations of ";
-  cout << "enumerate3Sided..." << flush;
+  cout << "enumerate3Sided..." << endl << flush;
   before = time(0);
   for(int i = 0; i < ei; i++) {
     xmin = rand() % n;

@@ -18,6 +18,8 @@
 #include <cmath>
 #include <limits>
 #include <time.h>
+#include <cstdio>
+
 #include "PSTPoint.h"
 #include "array_utilities.h"
 #include "sort/heap_sort.h"
@@ -30,7 +32,7 @@ namespace PrioritySearchTree {
   // General functions                                                         //
   ///////////////////////////////////////////////////////////////////////////////
   int indexOfParent(int index) { // base 1
-    return floor(index/2);
+    return static_cast<int>(floor(index/2));
   }
   int indexOfLeftChild(int index) { // base 1
     return (2*index);
@@ -51,6 +53,15 @@ namespace PrioritySearchTree {
   ///////////////////////////////////////////////////////////////////////////////
   // Methods                                                                   //
   ///////////////////////////////////////////////////////////////////////////////
+        
+        InPlacePST::InPlacePST(const char *filename) {
+                load(filename);
+        }
+
+        InPlacePST::InPlacePST(FILE *fp) {
+                load(fp);
+        }
+
   InPlacePST::InPlacePST(PSTPoint* points, int n) {
     time_t before, after;
     if(numeric_limits<coordx_t>::has_infinity) {
@@ -85,6 +96,33 @@ namespace PrioritySearchTree {
     cout << "Total time ";
   }
 
+  void InPlacePST::load(const char *filename) {
+    FILE *fp = fopen(filename, "r");
+    load(fp);
+  }
+
+  int InPlacePST::load(FILE *fp) {
+    int size = 0;
+    npoints = bytesToInt(fp);
+                cout << "# of points: " << npoints << endl << flush;
+    size += 4;
+    tree = new PSTPoint[npoints];
+    for(int i = 0;i < npoints; ++i) {
+      int shift = tree[i].load(fp);
+      size += shift;
+    }
+    return size;
+  }
+
+  vector<unsigned char> InPlacePST::serialize() {
+    vector<unsigned char> result = intToBytes(npoints);
+    for(int i = 0;i < npoints; ++i) {
+      vector<unsigned char> temp = tree[i].serialize();
+      result.insert(result.end(), temp.begin(), temp.end());
+    }
+    return result;
+  }
+
   void InPlacePST::printTree() {
     printTree(1,0);
   }
@@ -107,7 +145,7 @@ namespace PrioritySearchTree {
     return tree[n-1];
   }
 
-  void InPlacePST::inPlaceSort(int begin, int end, const PSTPoint& s) {
+  void InPlacePST::inPlaceSort(int begin, int end) {
     heap_sort(tree,begin-1,end-1);
   }
 
@@ -125,8 +163,6 @@ namespace PrioritySearchTree {
     int A = n - (powerOf2(h) - 1);
     // the first k nodes are roots of subtrees of size k1
     int k = (int)(A/powerOf2(h-i));
-    // s is the median value
-    PSTPoint s = getPoint(powerOf2(i+1));
     // the first k nodes are roots of subtrees of size k1
     int k1 = powerOf2(h+1-i) - 1;
     // the (k+1)-st node is the root of subtree of size k2
@@ -169,7 +205,7 @@ namespace PrioritySearchTree {
       }
     }
     // Finally, sort all points past the current level
-    inPlaceSort(powerOf2(i+1),n,s);
+    inPlaceSort(powerOf2(i+1),n);
   }
   int InPlacePST::numberOfChildren(int index) { // base 1
     if(indexOfLeftChild(index) > npoints) return 0;

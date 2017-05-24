@@ -393,6 +393,147 @@ class HashIndexReader : public IndexReader {
   BlockContents prefixes_contents_;
 };
 
+
+class PstIterator : public InternalIterator {
+ public:
+  explicit PstIterator(PrioritySearchTree::InPlacePST* pst)
+      : pst_(pst), valid_(false) {
+  }
+
+  virtual bool Valid() const override { return valid_; }
+
+  virtual void SeekToFirst() override {
+    //assert(!"PstIterator doesn't implement `SeekToFirst()`");
+    // SeekToFirst isn't supported and doesn't really make sense in the
+    // context of a Priority Search Tree. Hence we just do nothing here.
+  }
+  virtual void SeekToLast() override {
+    assert(!"PstIterator doesn't implement `SeekToLast()`");
+  }
+
+  virtual void Seek(const Slice& target) override {
+    query_ = target.ToString();
+    Slice query = Slice(query_);
+    Slice keypath;
+    GetLengthPrefixedSlice(&query, &keypath);
+    std::string tmp_string = std::string(keypath.data(), keypath.size());
+    std::cout << "vmx: PstIterator: Seek: keypath: " << tmp_string << std::endl;
+
+    //std::pair<double, double> minmax = deserialize_query(query.data());
+    double min, max;
+    std::tie(min, max) = deserialize_query(query.data());
+    std::cout << "vmx: PstIterator: Seek: minmax: " << min << " " << max << std::endl;
+
+    //std::vector<PSTPoint>* result = pst_->enumerate3Sided(min, max, 0);
+    PSTPoint result = pst_->highest3Sided(min, max, 0);
+    std::cout << "vmx: PstIterator: Seek: result: " << result << std::endl;
+
+    current_point_y_ = result.getY();
+    valid_ = true;
+    //delete result;
+  }
+
+  virtual void SeekForPrev(const Slice& target) override {
+    assert(!"PstIterator doesn't implement `SeekForPrev()`");
+  }
+
+  virtual void Next() override {
+    assert(!"PstIterator doesn't implement `Next()`");
+  }
+  virtual void Prev() override {
+    assert(!"PstIterator doesn't implement `Prev()`");
+  }
+
+  virtual Slice key() const override {
+    // Return the original query as key so that it is a proper match for
+    // the internal workings of RocksDB
+    return Slice(query_);
+  }
+  virtual Slice value() const override {
+    const char* yy = reinterpret_cast<const char*>(&current_point_y_);
+    return Slice(yy, sizeof(uint64_t));
+  }
+
+  virtual Status status() const override { return Status::OK(); }
+
+ private:
+  // The Priority Search Tree
+  PrioritySearchTree::InPlacePST* pst_;
+  // Whether the iterator is currntly valid or not
+  bool valid_;
+  // `value()` returns y coordinate (for Noise that's the Internal Id)
+  uint64_t current_point_y_;
+  // The original query. It is needed as the key that is returned needs to
+  // match the original query.
+  std::string query_;
+
+  std::pair<double, double> deserialize_query(const char* query) {
+    const double min = *reinterpret_cast<const double*>(query);
+    const double max = *reinterpret_cast<const double*>(
+        query + sizeof(double));
+    return std::make_pair(min, max);
+  }
+};
+
+
+
+// Index that is full Priority Search Tree
+class PstIndexReader : public IndexReader {
+ public:
+  // Read index from the file and create an intance for
+  // `PstIndexReader`.
+  // On success, index_reader will be populated; otherwise it will remain
+  // unmodified.
+  static Status Create(RandomAccessFileReader* file, const Footer& footer,
+                       const BlockHandle& index_handle,
+                       const ImmutableCFOptions& ioptions,
+                       const InternalKeyComparator* icomparator,
+                       IndexReader** index_reader,
+                       const PersistentCacheOptions& cache_options) {
+    std::unique_ptr<Block> index_block;
+    auto s = ReadBlockFromFile(
+        file, footer, ReadOptions(), index_handle, &index_block, ioptions,
+        true /* decompress */, Slice() /*compression dict*/, cache_options,
+        kDisableGlobalSequenceNumber, 0 /* read_amp_bytes_per_bit */);
+
+    if (s.ok()) {
+      *index_reader = new PstIndexReader(
+          icomparator, std::move(index_block), ioptions.statistics);
+    }
+
+    return s;
+  }
+
+  virtual InternalIterator* NewIterator(BlockIter* iter = nullptr,
+                                        bool dont_care = true) override {
+    //pst.enumerate3Sided(xmin,xmax,rand() % n);
+    //return index_block_->NewIterator(icomparator_, iter, true);
+    return new PstIterator(pst_);
+  }
+
+  virtual size_t size() const override { return index_block_->size(); }
+  virtual size_t usable_size() const override {
+    return index_block_->usable_size();
+  }
+
+  virtual size_t ApproximateMemoryUsage() const override {
+    assert(index_block_);
+    return index_block_->ApproximateMemoryUsage();
+  }
+
+ private:
+  PstIndexReader(const InternalKeyComparator* icomparator,
+                 std::unique_ptr<Block>&& index_block,
+                 Statistics* stats)
+      : IndexReader(icomparator, stats), index_block_(std::move(index_block)) {
+    pst_ = reinterpret_cast<PrioritySearchTree::InPlacePST*>(const_cast<char *>(index_block_->data()));
+    assert(index_block_ != nullptr);
+  }
+  std::unique_ptr<Block> index_block_;
+  PrioritySearchTree::InPlacePST* pst_;
+};
+
+
 // Helper function to setup the cache key's prefix for the Table.
 void BlockBasedTable::SetupCacheKeyPrefix(Rep* rep, uint64_t file_size) {
   assert(kMaxCacheKeyPrefixSize >= 10);
@@ -1649,6 +1790,17 @@ Status BlockBasedTable::Get(const ReadOptions& read_options, const Slice& key,
         RecordTick(rep_->ioptions.statistics, BLOOM_FILTER_USEFUL);
         break;
       } else {
+        // The Priority Search Tree index doesn't contain pointers to data
+        // blocks, but the data itself. Hence return the data directly
+        if(dynamic_cast<PstIterator*>(iiter) != nullptr) {
+          ParsedInternalKey parsed_key(iiter->key(),
+                                       kMaxSequenceNumber,
+                                       kTypeValue);
+          get_context->SaveValue(parsed_key, iiter->value());
+          s = Status::OK();
+          break;
+        }
+        
         BlockIter biter;
         NewDataBlockIterator(rep_, read_options, iiter->value(), &biter);
 
@@ -1849,6 +2001,12 @@ Status BlockBasedTable::CreateIndexReader(
           rep_->internal_prefix_transform.get(), footer, file, rep_->ioptions,
           icomparator, footer.index_handle(), meta_index_iter, index_reader,
           rep_->hash_index_allow_collision, rep_->persistent_cache_options);
+    }
+    case BlockBasedTableOptions::kPstSearch: {
+      return PstIndexReader::Create(
+          file, footer, footer.index_handle(), rep_->ioptions, icomparator,
+          index_reader, rep_->persistent_cache_options);
+     
     }
     default: {
       std::string error_message =

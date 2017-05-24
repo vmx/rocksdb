@@ -338,6 +338,8 @@ class PartitionedIndexBuilder : public IndexBuilder {
 };
 
 
+
+
 // This index builder builds a priority search tree
 //
 // It's a special purpose index for "Noise".
@@ -350,17 +352,23 @@ class PstIndexBuilder : public IndexBuilder {
                              const Slice* first_key_in_next_block,
                              const BlockHandle& block_handle) override {}
 
-  virtual void OnKeyAdded(const Slice& key) override {
+  virtual void OnKeyAdded(const Slice& const_key) override {
     std::cout << "vmx: index_builder: pst: onkeyadded" << std::endl;
-    size_t n = 13;
-    PrioritySearchTree::PSTPoint *points = new PrioritySearchTree::PSTPoint[n];
-    PrioritySearchTree::PSTPoint p1(15,7);
-    PrioritySearchTree::PSTPoint p2(16,2);
-    points[0] = p1;
-    points[1] = p2;
-    PSTArray::print(points,n);
-    PrioritySearchTree::InPlacePST ippst(points,n);
-    delete points;
+    Slice key = Slice(const_key);
+    Slice keypath;
+
+    // The key consists of the Keypath, value and Internal Id
+    GetLengthPrefixedSlice(&key, &keypath);
+
+    PrioritySearchTree::PSTPoint point = deserialize_point(key.data());
+    //std::cout << "vmx: key:" << deserialize.first << " " << deserialize.second << std::endl;
+    std::cout << "vmx: point: " << point << std::endl;
+
+    //PrioritySearchTree::PSTPoint p1(15,7);
+    //PrioritySearchTree::PSTPoint p2(16,2);
+    //points_.push_back(p1);
+    //points_.push_back(p2);
+    points_.push_back(point);
   }
 
 
@@ -368,18 +376,45 @@ class PstIndexBuilder : public IndexBuilder {
   virtual Status Finish(
       IndexBlocks* index_blocks,
       const BlockHandle& last_partition_block_handle) override {
+    PSTArray::print(points_.data(), points_.size());
+    //PrioritySearchTree::InPlacePST ippst(points_.data(), points_.size());
+    // TODO vmx 2017-05-24: This allocation needs a free
+    pst_ = new PrioritySearchTree::InPlacePST(points_.data(), points_.size());
+    //pst_block_ = std::string(reinterpret_cast<const char *>(points_.data()),
+    //                         points_.size() * point_size);
+    //index_blocks->index_block_contents = Slice(
+    //    reinterpret_cast<const char *>(points_.data()),
+    //    points_.size() * point_size);
+    index_blocks->index_block_contents = Slice(
+        reinterpret_cast<const char *>(pst_),
+        points_.size() * point_size);
+    // XXX vmx 2017-05-22: GO ON HERE and store one pst per same key prefix
+    // just like the indexes of a partitioned filter (returning `Incomplete`
+    // on the flush. Afterwards implement the index reader which actually
+    // uses just the index and never goes down to the data itself.
     return Status::OK();
   }
 
   virtual size_t EstimatedSize() const override {
-    //return pst_block_.size();
-    return 0;
+    return points_.size() * point_size;
   }
 
   friend class PartitionedIndexBuilder;
 
  private:
-  std::string pst_block_;
+  const size_t point_size = sizeof(double) + sizeof(uint64_t);
+  //std::string pst_block_;
+  PrioritySearchTree::InPlacePST* pst_;
+  // The current points that should build a priority search tree
+  std::vector<PSTPoint> points_;
+  
+
+  PrioritySearchTree::PSTPoint deserialize_point(const char* point) {
+    const double value = *reinterpret_cast<const double*>(point);
+    const uint64_t iid = *reinterpret_cast<const uint64_t*>(
+        point + sizeof(double));
+    return PrioritySearchTree::PSTPoint(value, iid);
+  }
 };
 
 }  // namespace rocksdb

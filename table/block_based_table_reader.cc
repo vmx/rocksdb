@@ -396,10 +396,27 @@ class HashIndexReader : public IndexReader {
 
 class PstIterator : public InternalIterator {
  public:
-  explicit PstIterator(PrioritySearchTree::InPlacePST* pst)
-      : pst_(pst), valid_(false) {
-  }
-
+  //explicit PstIterator(PrioritySearchTree::InPlacePST* pst)
+  //    : pst_(pst), valid_(false) {
+  //}
+  explicit PstIterator(InternalIterator* index_iter,
+  //explicit PstIterator(BlockIter* index_iter,
+                       RandomAccessFileReader* file,
+                       const Footer& footer,
+                       const ImmutableCFOptions& ioptions,
+                       const PersistentCacheOptions& cache_options) 
+      : index_iter_(index_iter),
+        valid_(false),
+        file_(file),
+        footer_(footer),
+        ioptions_(ioptions),
+        cache_options_(cache_options) {}
+  
+//InternalIterator* BlockBasedTable::NewDataBlockIterator(
+//    Rep* rep, const ReadOptions& ro, const Slice& index_value,
+//    BlockIter* input_iter, bool is_index) 
+  
+  
   virtual bool Valid() const override { return valid_; }
 
   virtual void SeekToFirst() override {
@@ -419,13 +436,33 @@ class PstIterator : public InternalIterator {
     std::string tmp_string = std::string(keypath.data(), keypath.size());
     std::cout << "vmx: PstIterator: Seek: keypath: " << tmp_string << std::endl;
 
+    // Find the right Priority Search Tree
+    index_iter_->Seek(keypath);
+
+    // Read the Priority Search Tree from disk
+    Slice index_value = index_iter_->value();
+    BlockHandle handle;
+    Status s = handle.DecodeFrom(&index_value);
+    std::unique_ptr<Block> block_value;
+    s = ReadBlockFromFile(
+        file_, footer_, ReadOptions(), handle, &block_value, ioptions_,
+        true /* decompress */, Slice() /*compression_dict*/, cache_options_,
+        kDisableGlobalSequenceNumber, 0 /* read_amp_bytes_per_bit */);
+    //if (s.ok()) {
+    //  block.value = block_value.release();
+    //}
+
+    PrioritySearchTree::InPlacePST* pst = reinterpret_cast<PrioritySearchTree::InPlacePST*>(const_cast<char *>(block_value->data()));
+    
+
+
     //std::pair<double, double> minmax = deserialize_query(query.data());
     double min, max;
     std::tie(min, max) = deserialize_query(query.data());
     std::cout << "vmx: PstIterator: Seek: minmax: " << min << " " << max << std::endl;
 
     //std::vector<PSTPoint>* result = pst_->enumerate3Sided(min, max, 0);
-    PSTPoint result = pst_->highest3Sided(min, max, 0);
+    PSTPoint result = pst->highest3Sided(min, max, 0);
     std::cout << "vmx: PstIterator: Seek: result: " << result << std::endl;
 
     current_point_y_ = result.getY();
@@ -457,6 +494,8 @@ class PstIterator : public InternalIterator {
   virtual Status status() const override { return Status::OK(); }
 
  private:
+  // Iterator over the pointers to the Priority Search Trees
+  InternalIterator* index_iter_;
   // The Priority Search Tree
   PrioritySearchTree::InPlacePST* pst_;
   // Whether the iterator is currntly valid or not
@@ -466,6 +505,11 @@ class PstIterator : public InternalIterator {
   // The original query. It is needed as the key that is returned needs to
   // match the original query.
   std::string query_;
+  // Things needed to call `ReadFromFile()`
+  RandomAccessFileReader* file_;
+  const Footer& footer_;
+  const ImmutableCFOptions& ioptions_;
+  const PersistentCacheOptions& cache_options_;
 
   std::pair<double, double> deserialize_query(const char* query) {
     const double min = *reinterpret_cast<const double*>(query);
@@ -498,7 +542,9 @@ class PstIndexReader : public IndexReader {
 
     if (s.ok()) {
       *index_reader = new PstIndexReader(
-          icomparator, std::move(index_block), ioptions.statistics);
+          icomparator, std::move(index_block), ioptions.statistics,
+          // Pass on all options that are needed for `ReadBlockFromFile()`
+          file, footer, ioptions, cache_options);
     }
 
     return s;
@@ -508,7 +554,12 @@ class PstIndexReader : public IndexReader {
                                         bool dont_care = true) override {
     //pst.enumerate3Sided(xmin,xmax,rand() % n);
     //return index_block_->NewIterator(icomparator_, iter, true);
-    return new PstIterator(pst_);
+    auto index_iter = index_block_->NewIterator(icomparator_, nullptr, true);
+    return new PstIterator(index_iter,
+                           file_,
+                           footer_,
+                           ioptions_,
+                           cache_options_);
   }
 
   virtual size_t size() const override { return index_block_->size(); }
@@ -524,13 +575,29 @@ class PstIndexReader : public IndexReader {
  private:
   PstIndexReader(const InternalKeyComparator* icomparator,
                  std::unique_ptr<Block>&& index_block,
-                 Statistics* stats)
-      : IndexReader(icomparator, stats), index_block_(std::move(index_block)) {
-    pst_ = reinterpret_cast<PrioritySearchTree::InPlacePST*>(const_cast<char *>(index_block_->data()));
+                 Statistics* stats,
+                 RandomAccessFileReader* file,
+                 const Footer& footer,
+                 const ImmutableCFOptions& ioptions,
+                 const PersistentCacheOptions& cache_options)
+      : IndexReader(icomparator, stats),
+        index_block_(std::move(index_block)),
+        file_(file),
+        footer_(footer),
+        ioptions_(ioptions),
+        cache_options_(cache_options)
+  {
+    //pst_ = reinterpret_cast<PrioritySearchTree::InPlacePST*>(const_cast<char *>(index_block_->data()));
     assert(index_block_ != nullptr);
   }
   std::unique_ptr<Block> index_block_;
   PrioritySearchTree::InPlacePST* pst_;
+
+  // Things needed to call `ReadFromFile()`
+  RandomAccessFileReader* file_;
+  const Footer& footer_;
+  const ImmutableCFOptions& ioptions_;
+  const PersistentCacheOptions& cache_options_;
 };
 
 

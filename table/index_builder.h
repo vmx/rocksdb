@@ -346,7 +346,9 @@ class PartitionedIndexBuilder : public IndexBuilder {
 class PstIndexBuilder : public IndexBuilder {
  public:
   explicit PstIndexBuilder(const InternalKeyComparator* comparator)
-      : IndexBuilder(comparator) {}
+      : IndexBuilder(comparator),
+      prev_keypath_(""),
+      last_block_builder_(1) {}
 
   virtual void AddIndexEntry(std::string* last_key_in_current_block,
                              const Slice* first_key_in_next_block,
@@ -360,14 +362,26 @@ class PstIndexBuilder : public IndexBuilder {
     // The key consists of the Keypath, value and Internal Id
     GetLengthPrefixedSlice(&key, &keypath);
 
-    PrioritySearchTree::PSTPoint point = deserialize_point(key.data());
-    //std::cout << "vmx: key:" << deserialize.first << " " << deserialize.second << std::endl;
-    std::cout << "vmx: point: " << point << std::endl;
+    // First call, there wasn't any keypath yet
+    if (prev_keypath_.empty()) {
+      prev_keypath_ = std::string(keypath.data(), keypath.size());
+    }
 
-    //PrioritySearchTree::PSTPoint p1(15,7);
-    //PrioritySearchTree::PSTPoint p2(16,2);
-    //points_.push_back(p1);
-    //points_.push_back(p2);
+    // A new keypath, hence a new index block
+    if (keypath.compare(Slice(prev_keypath_)) != 0) {
+      //PrioritySearchTree::InPlacePST* pst = new PrioritySearchTree::InPlacePST(
+      //    points_.data(), points_.size());
+      //entries.push_back(
+      //    {prev_keypath_,
+      //     std::unique_ptr<PrioritySearchTree::InPlacePST>(pst)});
+      //points_.clear();
+      //prev_keypath_ = std::string(keypath.data(), keypath.size());
+      flush_pst();
+      prev_keypath_ = std::string(keypath.data(), keypath.size());
+    }
+
+    PrioritySearchTree::PSTPoint point = deserialize_point(key.data());
+    std::cout << "vmx: point: " << point << std::endl;
     points_.push_back(point);
   }
 
@@ -376,44 +390,116 @@ class PstIndexBuilder : public IndexBuilder {
   virtual Status Finish(
       IndexBlocks* index_blocks,
       const BlockHandle& last_partition_block_handle) override {
-    PSTArray::print(points_.data(), points_.size());
-    //PrioritySearchTree::InPlacePST ippst(points_.data(), points_.size());
-    // TODO vmx 2017-05-24: This allocation needs a free
-    pst_ = new PrioritySearchTree::InPlacePST(points_.data(), points_.size());
-    //pst_block_ = std::string(reinterpret_cast<const char *>(points_.data()),
-    //                         points_.size() * point_size);
-    //index_blocks->index_block_contents = Slice(
-    //    reinterpret_cast<const char *>(points_.data()),
-    //    points_.size() * point_size);
-    index_blocks->index_block_contents = Slice(
-        reinterpret_cast<const char *>(pst_),
-        points_.size() * point_size);
-    // XXX vmx 2017-05-22: GO ON HERE and store one pst per same key prefix
-    // just like the indexes of a partitioned filter (returning `Incomplete`
-    // on the flush. Afterwards implement the index reader which actually
-    // uses just the index and never goes down to the data itself.
-    return Status::OK();
+    // `Finish` is called for *every* index block in case your index
+    // returns several ones. It only needs to return `Status::Incomplete()`
+    // if there are more blocks to finish. Once the you are at the final
+    // block, return `Status::OK()`.
+ 
+    // There might still be points which aren't built up to a Priority Search
+    // Tree yet.
+    if (!points_.empty()) {
+      flush_pst();
+      prev_keypath_ = std::string();
+    }
+
+    assert(!entries_.empty());
+ 
+    // Index blocks are currently stored on disk. Store the pointers to
+    // them in the last index block
+    if (finishing_indexes_ == true) {
+      Entry& last_entry = entries_.front();
+      std::string handle_encoding;
+      last_partition_block_handle.EncodeTo(&handle_encoding);
+      //last_block_.append(last_entry.keypath);
+      //last_block_.append(handle_encoding);
+      last_block_builder_.Add(last_entry.keypath, handle_encoding);
+      entries_.pop_front();
+    }
+ 
+    // All index blocks are stored, store the last one
+    if (entries_.empty()) {
+      //index_blocks->index_block_contents = Slice(last_block_);
+      index_blocks->index_block_contents = last_block_builder_.Finish();
+      return Status::OK();
+    }
+    // There are still blocks that need to be stored
+    else {
+      Entry &entry = entries_.front();
+      std::string handle_encoding;
+      index_blocks->index_block_contents = Slice(
+          reinterpret_cast<const char *>(entry.pst.get()), entry.pst->size());
+      finishing_indexes_ = true;
+      return Status::Incomplete();
+    }
+    
+//    PSTArray::print(points_.data(), points_.size());
+//    //PrioritySearchTree::InPlacePST ippst(points_.data(), points_.size());
+//    // TODO vmx 2017-05-24: This allocation needs a free
+//    pst_ = new PrioritySearchTree::InPlacePST(points_.data(), points_.size());
+//    //pst_block_ = std::string(reinterpret_cast<const char *>(points_.data()),
+//    //                         points_.size() * point_size);
+//    //index_blocks->index_block_contents = Slice(
+//    //    reinterpret_cast<const char *>(points_.data()),
+//    //    points_.size() * point_size);
+//    index_blocks->index_block_contents = Slice(
+//        reinterpret_cast<const char *>(pst_),
+//        //points_.size() * PSTPoint::SIZE);
+//        points_.size() * 16);
+//    return Status::OK();
   }
 
   virtual size_t EstimatedSize() const override {
-    return points_.size() * point_size;
+    size_t total = 0;
+    // The index blocks so far processed
+    for (auto& entry: entries_) {
+      total += entry.pst->size();
+    }
+    // The current index block
+    total += points_.size() * 16;//PSTPoint::SIZE;
+    return total;
   }
 
   friend class PartitionedIndexBuilder;
 
  private:
-  const size_t point_size = sizeof(double) + sizeof(uint64_t);
   //std::string pst_block_;
   PrioritySearchTree::InPlacePST* pst_;
+  // The keypath of the previous key. If it is different, create a new
+  // Priority Search tree
+  std::string prev_keypath_;
   // The current points that should build a priority search tree
   std::vector<PSTPoint> points_;
-  
+  // And entry consists of the keypath and its Priority Search Tree
+  struct Entry {
+    std::string keypath;
+    std::unique_ptr<PrioritySearchTree::InPlacePST> pst;
+  };
+  // List of Priority Search Trees and their keys
+  std::list<Entry> entries_;
+  // The last index block that contains pointers to the other blocks
+  //std::string last_block_;
+  BlockBuilder last_block_builder_;
+
+  // true if Finish is called once but not complete yet.
+  bool finishing_indexes_ = false;
+
 
   PrioritySearchTree::PSTPoint deserialize_point(const char* point) {
     const double value = *reinterpret_cast<const double*>(point);
     const uint64_t iid = *reinterpret_cast<const uint64_t*>(
         point + sizeof(double));
     return PrioritySearchTree::PSTPoint(value, iid);
+  }
+
+  // Build a Priority Search Tree out of the current data and put it into
+  // the list of trees
+  void flush_pst() {
+    PrioritySearchTree::InPlacePST* pst = new PrioritySearchTree::InPlacePST(
+        points_.data(), points_.size());
+    entries_.push_back(
+        {prev_keypath_,
+         std::unique_ptr<PrioritySearchTree::InPlacePST>(pst)});
+    points_.clear();
   }
 };
 

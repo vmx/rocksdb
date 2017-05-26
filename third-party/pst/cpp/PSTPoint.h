@@ -58,9 +58,7 @@ namespace PrioritySearchTree {
     bool yLessThan(const PSTPoint& p);
 
     // Return the size of a single point in bytes
-    static size_t size() {
-      return sizeof(coordx_t) + sizeof(coordy_t);
-    }
+    static const size_t SIZE = sizeof(coordx_t) + sizeof(coordy_t);
   };
 
   /////////////////////////////////////////////////////////////////////////////

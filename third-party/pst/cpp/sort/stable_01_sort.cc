@@ -116,8 +116,8 @@ void algorithm_A(PSTPoint* array, int begin, int end, const PSTPoint& s) {
       if(i == rank[i]) inPlace[i] = true;
     }
   }
-  delete rank;
-  delete inPlace;
+  delete[] rank;
+  delete[] inPlace;
 }
 
 ///////////////////////////////////////////////////////////////////////////////

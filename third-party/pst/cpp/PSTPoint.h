@@ -25,6 +25,7 @@
 #ifndef PSTPOINT_H
 #define PSTPOINT_H
 
+#include <cstdint>
 #include <ostream>
 #include <algorithm>
 using std::basic_ostream;

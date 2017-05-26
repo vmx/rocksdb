@@ -42,7 +42,7 @@ int main(int argv, char** argc) {
   PSTPoint* points = new PSTPoint[n];
   PSTPoint s;
   for(int i = 0; i < n; i++) {
-    PSTPoint p(i,n-i);
+    PSTPoint p(i,static_cast<coordy_t>(n-i));
     if(i == n/2)
       s = p;
     points[i] = p;

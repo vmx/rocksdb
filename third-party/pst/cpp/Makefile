@@ -1,9 +1,9 @@
 # compile with debug information
 ifeq ($(mode),release)
-	CXXFLAGS=-O2 -Wall -Wextra -Wshadow -Wconversion
+	CXXFLAGS=-O2 -Wall -Wextra -Wshadow -Wconversion -std=c++11
 else
 	mode = debug
-	CXXFLAGS=-O0 -g -Wall -Wextra -Wshadow -Wconversion
+	CXXFLAGS=-O0 -g -Wall -Wextra -Wshadow -Wconversion -std=c++11
 endif
 
 all: test_sort test_partition test_pst test_leda
@@ -12,7 +12,7 @@ all: test_sort test_partition test_pst test_leda
 test_leda:
 	g++ $(CXXFLAGS) -L$(LEDAROOT) -I$(LEDAROOT)/incl test_leda.cc -lleda -lX11 -lm -o test_leda
 
-test_pst: PSTPoint.o sort/heap_sort.o InPlacePST.o control_utilities.o array_utilities.o test_pst.cc
+test_pst: PSTPoint.o sort/heap_sort.o InPlacePST.o array_utilities.o test_pst.cc
 
 test_sort: PSTPoint.o array_utilities.o sort/insertion_sort.o sort/heap_sort.o test_sort.cc
 

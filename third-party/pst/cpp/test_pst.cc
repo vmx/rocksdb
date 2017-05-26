@@ -52,7 +52,7 @@ int main(int argv, char** argc) {
   before = time(0);
   PSTPoint *points = new PSTPoint[n]; // allocate on the heap
   for(int i = 1; i < n; i++) {
-    PSTPoint p(i,i); // allocate on the stack
+    PSTPoint p(i,static_cast<coordy_t>(i)); // allocate on the stack
     points[i] = p;
   }
   after = time(0);
@@ -69,11 +69,11 @@ int main(int argv, char** argc) {
   InPlacePST ippst(points,n);
   after = time(0);
   cout << "took: " << (after - before) << endl;
-  delete points;
+  delete[] points;
   /////////////////////////////////////////////////////////////////////////////
   // Calculate memory usage                                                  //
   /////////////////////////////////////////////////////////////////////////////
-  cout << "Memory usage: " << (n * sizeof(int)) << " bytes." << endl;
+  cout << "Memory usage: " << (static_cast<uint>(n) * sizeof(int)) << " bytes." << endl;
   /////////////////////////////////////////////////////////////////////////////
   // Print the structure if the number of points is small                    //
   /////////////////////////////////////////////////////////////////////////////
@@ -89,7 +89,7 @@ int main(int argv, char** argc) {
   cout << "leftMostNE..." << flush;
   before = time(0);
   for(int i = 0; i < qi; i++)
-    result = ippst.leftMostNE(rand() % n, rand() % n);
+    result = ippst.leftMostNE(rand() % n, static_cast<coordy_t>(rand() % n));
   after = time(0);
   cout << "took: " << (after - before) << endl;
   /////////////////////////////////////////////////////////////////////////////
@@ -99,7 +99,7 @@ int main(int argv, char** argc) {
   cout << "highestNE..." << flush;
   before = time(0);
   for(int i = 0; i < qi; i++)
-    result = ippst.highestNE(rand() % n, rand() % n);
+    result = ippst.highestNE(rand() % n, static_cast<coordy_t>(rand() % n));
   after = time(0);
   cout << "took: " << (after - before) << endl;
   /////////////////////////////////////////////////////////////////////////////
@@ -113,7 +113,7 @@ int main(int argv, char** argc) {
     xmin = rand() % n;
     xmax = xmin + (rand() % (n - xmin));
     ymin = rand() % n;
-    result = ippst.highest3Sided(xmin,xmax,ymin);
+    result = ippst.highest3Sided(xmin,xmax,static_cast<coordy_t>(ymin));
   }
   after = time(0);
   cout << "took: " << (after - before) << endl;
@@ -127,7 +127,7 @@ int main(int argv, char** argc) {
   for(int i = 0; i < ei; i++) {
     xmin = rand() % n;
     xmax = xmin + (rand() % (n - xmin));
-    results = ippst.enumerate3Sided(xmin,xmax,rand() % n);
+    results = ippst.enumerate3Sided(xmin,xmax,static_cast<coordy_t>(rand() % n));
     delete results;
   }
   after = time(0);

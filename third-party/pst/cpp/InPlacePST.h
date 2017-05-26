@@ -28,6 +28,7 @@ using namespace std;
 namespace PrioritySearchTree {
   class InPlacePST {
     PSTPoint* tree;
+    // TODO vmx 2017-05-26: Change type from `int` to `size_t`
     int npoints;
     InPlacePST() {}
     void buildLevel(int i, int n);
@@ -50,7 +51,10 @@ namespace PrioritySearchTree {
 
     // The total byte size of the tree
     size_t size() {
-      return npoints * (sizeof(coordx_t) + sizeof(coordy_t));
+      // `npoints` shouldn't be casted to `size_t` but have that type. This
+      // would need a bigger change in the code base as it ripples up
+      // throughout the whole code base
+      return static_cast<size_t>(npoints) * (sizeof(coordx_t) + sizeof(coordy_t));
     };
   };
 }

@@ -35,7 +35,7 @@ int main(int argv, char** argc) {
   before = time(0);
   PSTPoint* points = new PSTPoint[n];
   for(int i = 0; i < n; i++) {
-    PSTPoint p(i,n-i);
+    PSTPoint p(i, static_cast<coordy_t>(n-i));
     points[i] = p;
   }
   after = time(0);

@@ -59,7 +59,12 @@ namespace PrioritySearchTree {
       for(int i=0;i<npoints;i++)
         cout << tree[i] << " ";
       cout << endl << "OVER" << endl;
-    }
+    };
+
+    // The total byte size of the tree
+    size_t size() {
+      return npoints * (sizeof(coordx_t) + sizeof(coordy_t));
+    };
   };
 }
 

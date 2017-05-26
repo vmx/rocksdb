@@ -5,7 +5,7 @@
 ;
 [subrepo]
 	remote = /home/vmx/src/c/pst/PrioritySearchTree
-	branch = vmx5
-	commit = cdc1cb64814a9b8562f4e5a0f42c4076fb9d1434
-	parent = 1212912369fc2e13de8bd9daec6d72e0ab317da5
+	branch = vmx8
+	commit = debb10561791695945af9d716fcf777d0efec71e
+	parent = a86c0b4c21842169b359bd5a48f0193edc257bba
 	cmdver = 0.3.1

@@ -27,17 +27,11 @@
 
 #include <ostream>
 #include <algorithm>
-#include <vector>
-#include <cstdio>
-
-#include "base_util.h"
-
-using std::vector;
 using std::basic_ostream;
 
 namespace PrioritySearchTree {
   typedef double coordx_t;
-  typedef int coordy_t;
+  typedef uint64_t coordy_t;
 
   class PSTPoint {
     coordx_t x;
@@ -62,9 +56,10 @@ namespace PrioritySearchTree {
     bool yGreaterThan(const PSTPoint& p);
     bool yLessThan(const PSTPoint& p);
 
-    int load(FILE *fp);
-    void load(char *filename);
-    vector<unsigned char> serialize();
+    // Return the size of a single point in bytes
+    static size_t size() {
+      return sizeof(coordx_t) + sizeof(coordy_t);
+    }
   };
 
   /////////////////////////////////////////////////////////////////////////////

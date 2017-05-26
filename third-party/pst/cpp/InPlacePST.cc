@@ -18,6 +18,8 @@
 #include <cmath>
 #include <limits>
 #include <time.h>
+#include <cstdio>
+
 #include "PSTPoint.h"
 #include "array_utilities.h"
 #include "sort/heap_sort.h"
@@ -51,6 +53,15 @@ namespace PrioritySearchTree {
   ///////////////////////////////////////////////////////////////////////////////
   // Methods                                                                   //
   ///////////////////////////////////////////////////////////////////////////////
+        
+        InPlacePST::InPlacePST(const char *filename) {
+                load(filename);
+        }
+
+        InPlacePST::InPlacePST(FILE *fp) {
+                load(fp);
+        }
+
   InPlacePST::InPlacePST(PSTPoint* points, int n) {
     time_t before, after;
     if(numeric_limits<coordx_t>::has_infinity) {
@@ -83,6 +94,33 @@ namespace PrioritySearchTree {
     after = time(0);
     cout << "took: " << (after - before) << endl;
     cout << "Total time ";
+  }
+
+  void InPlacePST::load(const char *filename) {
+    FILE *fp = fopen(filename, "r");
+    load(fp);
+  }
+
+  int InPlacePST::load(FILE *fp) {
+    int size = 0;
+    npoints = bytesToInt(fp);
+                cout << "# of points: " << npoints << endl << flush;
+    size += 4;
+    tree = new PSTPoint[npoints];
+    for(int i = 0;i < npoints; ++i) {
+      int shift = tree[i].load(fp);
+      size += shift;
+    }
+    return size;
+  }
+
+  vector<unsigned char> InPlacePST::serialize() {
+    vector<unsigned char> result = intToBytes(npoints);
+    for(int i = 0;i < npoints; ++i) {
+      vector<unsigned char> temp = tree[i].serialize();
+      result.insert(result.end(), temp.begin(), temp.end());
+    }
+    return result;
   }
 
   void InPlacePST::printTree() {

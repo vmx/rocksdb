@@ -394,6 +394,235 @@ class HashIndexReader : public IndexReader {
   BlockContents prefixes_contents_;
 };
 
+// Iterate over the index and filter out data that doesn't match the
+// given query
+class RtreeIterator : public InternalIterator {
+ public:
+  explicit RtreeIterator(InternalIterator* index_iter,
+                         RandomAccessFileReader* file, const Footer& footer,
+                         const ImmutableCFOptions& ioptions,
+                         const PersistentCacheOptions& cache_options,
+                         RtreeIteratorContext* context)
+      : index_iter_(index_iter),
+        valid_(false),
+        file_(file),
+        footer_(footer),
+        ioptions_(ioptions),
+        cache_options_(cache_options) {
+    if (context != nullptr) {
+      Slice query_slice = Slice(context->query_mbb);
+      Slice keypath_slice;
+      GetLengthPrefixedSlice(&query_slice, &keypath_slice);
+      keypath_ = keypath_slice.ToString();
+      query_mbb_ = ReadMbb(query_slice);
+    }
+    // Full table scan
+    else {
+      query_mbb_ = std::vector<Interval>();
+    }
+  }
+
+  virtual bool Valid() const override { return valid_; }
+
+  virtual void SeekToFirst() override {
+    // Find the right R-tree in the main index block
+    index_iter_->Seek(keypath_);
+
+    // Read the block that contains the R-tree from disk
+    Slice index_value = index_iter_->value();
+    BlockHandle handle;
+    Status s = handle.DecodeFrom(&index_value);
+    s = ReadBlockContents(file_,
+                          footer_,
+                          ReadOptions(),
+                          handle,
+                          &rtree_block_,
+                          ioptions_,
+                          true /* decompress */,
+                          Slice() /*compression_dict*/,
+                          cache_options_);
+    valid_ = true;
+    Next();
+  }
+  virtual void SeekToLast() override {
+    assert(!"RtreeIterator doesn't implement `SeekToLast()`");
+  }
+
+  virtual void Seek(const Slice& target) override {
+    // TODO vmx 2017-06-26: Put more thought into this if this is really
+    // the best implementation for `Seek()`
+    Next();
+  }
+
+  virtual void SeekForPrev(const Slice& target) override {
+    assert(!"RtreeIterator doesn't implement `SeekForPrev()`");
+  }
+
+  virtual void Next() override {
+    const size_t num_dimensions = query_mbb_.size();
+    while (rtree_block_.data.size() > 0) {
+      Slice encoded_mbb = SplitSlice(rtree_block_.data,
+                                     num_dimensions * 2 * sizeof(double));
+      // Store the current Mbb so that it can be returned by `key()`
+      mbb_ = encoded_mbb.ToString();
+      std::vector<Interval> decoded_mbb = ReadMbb(encoded_mbb);
+
+      // Decode the handle so that the slice is advanced correctly
+      BlockHandle handle;
+      Status s = handle.DecodeFrom(&rtree_block_.data);
+      // TODO vmx 2017-06-09: Don't en-/decode things, use the encoded one
+      // directly
+      // `EncodeTo()` appends to the given string, hence clear it first
+      leaf_node_.clear();
+      handle.EncodeTo(&leaf_node_);
+
+      // We found a matching child node
+      if (IntersectMbb(query_mbb_, decoded_mbb)) {
+        valid_ = true;
+        return;
+      }
+    }
+    // There's wasn't any matching leaf found
+    valid_ = false;
+  }
+
+  virtual void Prev() override {
+    assert(!"RtreeIterator doesn't implement `Prev()`");
+  }
+
+  virtual Slice key() const override {
+    return Slice(mbb_);
+  }
+
+  virtual Slice value() const override {
+    // Return the handle to a matching leaf node. This is needed by
+    // `TwoLevelIterator::InitDataBlock()`.
+    return Slice(leaf_node_);
+  }
+
+  virtual Status status() const override { return Status::OK(); }
+
+ private:
+  // Iterator over the pointers to the Priority Search Trees
+  InternalIterator* index_iter_;
+  // Whether the iterator is currntly valid or not
+  bool valid_;
+  // `value()` returns a BlockHandle to a matching node
+  std::string leaf_node_;
+  // The original query. It is needed as the key that is returned needs to
+  // match the original query.
+  std::string query_;
+  // The keypath the iterator was created with. This one is used for
+  // finding the right R-tree
+  std::vector<Interval> query_mbb_;
+  // The block that contains the leaf nodes that are current accessed
+  std::string keypath_;
+  // The multi-dimensional bounding box of the matching node. It is returned
+  // when `key()` is called
+  std::string mbb_;
+  // The query_mbb the iterator was created with. This one is used for
+  // traversing the R-tree
+  BlockContents rtree_block_;
+  // Things needed to call `ReadFromFile()`
+  RandomAccessFileReader* file_;
+  const Footer& footer_;
+  const ImmutableCFOptions& ioptions_;
+  const PersistentCacheOptions& cache_options_;
+
+  // Splits a slice at a certain offset into two parts. It returns the
+  // first part and advaces the given slice to the rest.
+  Slice SplitSlice(Slice& given, size_t offset) {
+    Slice first = Slice(given.data(), offset);
+    given.remove_prefix(offset);
+    return first;
+  }
+};
+
+// Index that is an R-tree
+class RtreeIndexReader : public IndexReader {
+ public:
+  // Read index from the file and create an intance for `RtreeIIndexReader`.
+  // On success, index_reader will be populated; otherwise it will remain
+  // unmodified.
+  static Status Create(BlockBasedTable *table,
+                       RandomAccessFileReader* file,
+                       const Footer& footer,
+                       const BlockHandle& index_handle,
+                       const ImmutableCFOptions& ioptions,
+                       const InternalKeyComparator* icomparator,
+                       IndexReader** index_reader,
+                       const PersistentCacheOptions& cache_options) {
+    std::unique_ptr<Block> index_block;
+    auto s = ReadBlockFromFile(
+        file, footer, ReadOptions(), index_handle, &index_block, ioptions,
+        true /* decompress */, Slice() /*compression dict*/, cache_options,
+        kDisableGlobalSequenceNumber, 0 /* read_amp_bytes_per_bit */);
+
+    if (s.ok()) {
+      *index_reader = new RtreeIndexReader(
+          table, icomparator, std::move(index_block), ioptions.statistics,
+          // Pass on all options that are needed for `ReadBlockFromFile()`
+          file, footer, ioptions, cache_options);
+    }
+
+    return s;
+  }
+
+  virtual InternalIterator* NewIterator(BlockIter* iter = nullptr,
+                                        bool dont_care = true,
+                                        IteratorContext* iterator_context = nullptr) override {
+    auto index_iter = index_block_->NewIterator(icomparator_,
+                                                nullptr,
+                                                true);
+    RtreeIteratorContext* context =
+        reinterpret_cast<RtreeIteratorContext*>(iterator_context);
+    return new RtreeIterator(index_iter,
+                             file_,
+                             footer_,
+                             ioptions_,
+                             cache_options_,
+                             context);
+  }
+
+  virtual size_t size() const override { return index_block_->size(); }
+  virtual size_t usable_size() const override {
+    return index_block_->usable_size();
+  }
+
+  virtual size_t ApproximateMemoryUsage() const override {
+    assert(index_block_);
+    return index_block_->ApproximateMemoryUsage();
+  }
+
+ private:
+  RtreeIndexReader(BlockBasedTable* table,
+                   const InternalKeyComparator* icomparator,
+                   std::unique_ptr<Block>&& index_block,
+                   Statistics* stats,
+                   RandomAccessFileReader* file,
+                   const Footer& footer,
+                   const ImmutableCFOptions& ioptions,
+                   const PersistentCacheOptions& cache_options)
+      : IndexReader(icomparator, stats),
+        table_(table),
+        index_block_(std::move(index_block)),
+        file_(file),
+        footer_(footer),
+        ioptions_(ioptions),
+        cache_options_(cache_options)
+  {
+    assert(index_block_ != nullptr);
+  }
+  BlockBasedTable* table_;
+  std::unique_ptr<Block> index_block_;
+
+  // Things needed to call `ReadFromFile()`
+  RandomAccessFileReader* file_;
+  const Footer& footer_;
+  const ImmutableCFOptions& ioptions_;
+  const PersistentCacheOptions& cache_options_;
+};
+
 // Helper function to setup the cache key's prefix for the Table.
 void BlockBasedTable::SetupCacheKeyPrefix(Rep* rep, uint64_t file_size) {
   assert(kMaxCacheKeyPrefixSize >= 10);
@@ -1307,8 +1536,22 @@ InternalIterator* BlockBasedTable::NewDataBlockIterator(
   InternalIterator* iter;
   if (s.ok()) {
     assert(block.value != nullptr);
-    iter = block.value->NewIterator(&rep->internal_comparator, input_iter, true,
-                                    rep->ioptions.statistics);
+    // The default case
+    if (ro.iterator_context == nullptr) {
+      iter = block.value->NewIterator(&rep->internal_comparator, input_iter,
+                                      true, rep->ioptions.statistics);
+    }
+    // the special case, currently hard-coded to the R-tree
+    else {
+      RtreeIteratorContext* iterator_context =
+          reinterpret_cast<RtreeIteratorContext*>(ro.iterator_context);
+      RtreeBlockIter* rtree_input_iter =
+          reinterpret_cast<RtreeBlockIter*>(input_iter);
+      iter = block.value->NewRtreeIterator(&rep->internal_comparator,
+                                           rtree_input_iter,
+                                           rep->ioptions.statistics,
+                                           iterator_context);
+    }
     if (block.cache_handle != nullptr) {
       iter->RegisterCleanup(&ReleaseCachedEntry, block_cache,
                             block.cache_handle);
@@ -1850,6 +2093,11 @@ Status BlockBasedTable::CreateIndexReader(
           rep_->internal_prefix_transform.get(), footer, file, rep_->ioptions,
           icomparator, footer.index_handle(), meta_index_iter, index_reader,
           rep_->hash_index_allow_collision, rep_->persistent_cache_options);
+    }
+    case BlockBasedTableOptions::kRtreeSearch: {
+      return RtreeIndexReader::Create(
+          this, file, footer, footer.index_handle(), rep_->ioptions,
+          icomparator, index_reader, rep_->persistent_cache_options);
     }
     default: {
       std::string error_message =

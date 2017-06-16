@@ -20,6 +20,7 @@
 #include "table/block_based_table_factory.h"
 #include "table/block_builder.h"
 #include "table/format.h"
+#include "util/rtree.h"
 
 namespace rocksdb {
 // The interface for building index.
@@ -329,5 +330,194 @@ class PartitionedIndexBuilder : public IndexBuilder {
   const BlockBasedTableOptions& table_opt_;
   // true if it should cut the next filter partition block
   bool cut_filter_block = false;
+};
+
+// This index builder builds an R-tree. The code is currently specific to
+// Noise, but could be made more generic.
+class RtreeIndexBuilder : public IndexBuilder {
+ public:
+  explicit RtreeIndexBuilder(const InternalKeyComparator* comparator)
+      : IndexBuilder(comparator),
+      prev_keypath_(""),
+      last_block_builder_(1) {}
+
+  // Get the enclosing MBB from this block and use it as key
+  virtual void AddIndexEntry(std::string* last_key_in_current_block,
+                             const Slice* first_key_in_next_block,
+                             const BlockHandle& block_handle) override {
+    Slice key = Slice(*last_key_in_current_block);
+    Slice keypath;
+
+    // The key consists of the Keypath, and several intervals. The first
+    // interval is the Internal Id, all others are the other dimensions.
+    GetLengthPrefixedSlice(&key, &keypath);
+
+    // First call, there wasn't any keypath yet
+    if (prev_keypath_.empty()) {
+      prev_keypath_ = std::string(keypath.data(), keypath.size());
+    }
+
+    // A new keypath, hence a new index block
+    if (keypath.compare(Slice(prev_keypath_)) != 0) {
+      flush_rtree();
+      prev_keypath_ = std::string(keypath.data(), keypath.size());
+    }
+
+    // Encode the block handle and construct leaf node
+    std::string handle_encoding;
+    block_handle.EncodeTo(&handle_encoding);
+    LeafNode leaf_node = LeafNode{enclosing_mbb_, handle_encoding};
+    leaf_nodes_.push_back(leaf_node);
+
+    enclosing_mbb_.clear();
+  }
+
+  // Calculate the enclosing MBB for each block
+  virtual void OnKeyAdded(const Slice& const_key) override {
+    Slice key = ExtractUserKey(const_key);
+    Slice keypath;
+
+    // The key consists of the Keypath, and several intervals. The first
+    // interval is the Internal Id, all others are the other dimensions.
+    GetLengthPrefixedSlice(&key, &keypath);
+
+    std::vector<Interval> mbb = ReadMbb(key);
+    expand_mbb(enclosing_mbb_, mbb);
+  }
+
+
+  using IndexBuilder::Finish;
+  virtual Status Finish(
+      IndexBlocks* index_blocks,
+      const BlockHandle& last_partition_block_handle) override {
+    // `Finish` is called for *every* index block in case your index
+    // returns several ones. It only needs to return `Status::Incomplete()`
+    // if there are more blocks to finish. Once the you are at the final
+    // block, return `Status::OK()`.
+
+    // There might still be points which aren't built up to a R-tree yet
+    if (!leaf_nodes_.empty()) {
+      flush_rtree();
+      prev_keypath_ = std::string();
+    }
+
+    assert(!entries_.empty());
+
+    // Index blocks are currently stored on disk. Store the pointers to
+    // them in the last index block.
+    if (finishing_indexes_ == true) {
+      Entry& last_entry = entries_.front();
+      std::string handle_encoding;
+      last_partition_block_handle.EncodeTo(&handle_encoding);
+      last_block_builder_.Add(last_entry.keypath, handle_encoding);
+      entries_.pop_front();
+    }
+
+    // All index blocks are stored, store the last one
+    if (entries_.empty()) {
+      index_blocks->index_block_contents = last_block_builder_.Finish();
+      return Status::OK();
+    }
+    // There are still blocks that need to be stored
+    else {
+      Entry &entry = entries_.front();
+      std::string handle_encoding;
+      index_blocks->index_block_contents = Slice(
+          reinterpret_cast<const char *>(entry.rtree->data()),
+          entry.rtree->size());
+      finishing_indexes_ = true;
+      return Status::Incomplete();
+    }
+  }
+
+  virtual size_t EstimatedSize() const override {
+    size_t total = 0;
+    // The index blocks so far processed
+    for (auto& entry: entries_) {
+      total += entry.rtree->size();
+    }
+    // The current index block
+    // TODO vmx 2017-06-07: Get correct size instead of guessing "48"
+    total += leaf_nodes_.size() * 48;
+    return total;
+  }
+
+  friend class PartitionedIndexBuilder;
+
+ private:
+  // The lowest level of the R-tree has the MBB of the block and the block
+  // handle pointing to that block.
+  struct LeafNode {
+    std::vector<Interval> mbb;
+    std::string encoded_block_handle;
+  };
+  // The current enclosing Mbb of the current leaf node
+  std::vector<Interval> enclosing_mbb_;
+  // The keypath of the previous key. If it is different, create a new R-tree
+  std::string prev_keypath_;
+  // The MBBs that are the lowest level of the R-tree
+  std::vector<LeafNode> leaf_nodes_;
+  // And entry consists of the keypath and its Priority Search Tree
+  struct Entry {
+    std::string keypath;
+    std::unique_ptr<std::string> rtree;
+  };
+  // List of Priority Search Trees and their keys
+  std::list<Entry> entries_;
+  // The last index block that contains pointers to the other blocks
+  //std::string last_block_;
+  BlockBuilder last_block_builder_;
+
+  // true if Finish is called once but not complete yet.
+  bool finishing_indexes_ = false;
+
+  // Expands the the first Mbb if the second one is bigger
+  void expand_mbb(std::vector<Interval>& to_expand,
+                  std::vector<Interval> expander) {
+    if (to_expand.empty()) {
+      to_expand = expander;
+    } else {
+      assert(to_expand.size() == expander.size());
+      for (size_t ii = 0; ii < to_expand.size(); ii++) {
+        if (expander[ii].min < to_expand[ii].min) {
+          to_expand[ii].min = expander[ii].min;
+        }
+        if (expander[ii].max > to_expand[ii].max) {
+          to_expand[ii].max = expander[ii].max;
+        }
+      }
+    }
+  }
+
+  std::string serialize_mbb(const std::vector<Interval>& mbb) {
+    std::string serialized;
+    for (auto& interval: mbb) {
+      serialized.append(reinterpret_cast<const char*>(&interval.min),
+                        sizeof(double));
+      serialized.append(reinterpret_cast<const char*>(&interval.max),
+                        sizeof(double));
+    }
+    return serialized;
+  }
+  std::string* serialize_leaf_nodes(const std::vector<LeafNode>& leaf_nodes) {
+    // The unique pointer that wraps the leaf_nodes will free the memory
+    std::string* serialized = new std::string();
+    for (auto& leaf_node: leaf_nodes) {
+      std::string serialized_mbb = serialize_mbb(leaf_node.mbb);
+      serialized->append(serialized_mbb);
+      serialized->append(leaf_node.encoded_block_handle);
+    }
+    return serialized;
+  }
+
+  // Build an R-tree out of the current data and put it into the list of trees
+  void flush_rtree() {
+    std::string* leaf_nodes = serialize_leaf_nodes(leaf_nodes_);
+    // TODO vmx 2017-06-07: Build up the actual R-tree
+    entries_.push_back(
+        {prev_keypath_,
+         std::unique_ptr<std::string>(leaf_nodes)});
+    leaf_nodes_.clear();
+  }
 };
 }  // namespace rocksdb

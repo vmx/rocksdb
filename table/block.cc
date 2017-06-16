@@ -474,4 +474,115 @@ size_t Block::ApproximateMemoryUsage() const {
   return usage;
 }
 
+// NOTE vmx 2017-06-08: This code is based on `Block::NewIterator`, it was
+// a bit simplified. The major difference is that not a `BlockIter()` but a
+// `RtreeBlockIter` is created.
+InternalIterator* Block::NewRtreeIterator(const Comparator* cmp,
+                                          RtreeBlockIter* iter,
+                                          Statistics* stats,
+                                          RtreeIteratorContext* context) {
+  if (size_ < 2*sizeof(uint32_t)) {
+    if (iter != nullptr) {
+      iter->SetStatus(Status::Corruption("bad block contents"));
+      return iter;
+    } else {
+      return NewErrorInternalIterator(Status::Corruption("bad block contents"));
+    }
+  }
+  const uint32_t num_restarts = NumRestarts();
+  if (num_restarts == 0) {
+    if (iter != nullptr) {
+      iter->SetStatus(Status::OK());
+      return iter;
+    } else {
+      return NewEmptyInternalIterator();
+    }
+  } else {
+    if (iter != nullptr) {
+      iter->Initialize(cmp,
+                       data_,
+                       restart_offset_,
+                       num_restarts,
+                       global_seqno_,
+                       read_amp_bitmap_.get(),
+                       context->query_mbb);
+    } else {
+      iter = new RtreeBlockIter(cmp,
+                                data_,
+                                restart_offset_,
+                                num_restarts,
+                                global_seqno_,
+                                read_amp_bitmap_.get(),
+                                context->query_mbb);
+    }
+
+    if (read_amp_bitmap_) {
+      if (read_amp_bitmap_->GetStatistics() != stats) {
+        // DB changed the Statistics pointer, we need to notify read_amp_bitmap_
+        read_amp_bitmap_->SetStatistics(stats);
+      }
+    }
+  }
+
+  return iter;
+}
+
+void RtreeBlockIter::Next() {
+  assert(Valid());
+  ParseNextKey();
+}
+
+void RtreeBlockIter::SeekToFirst() {
+  if (data_ == nullptr) {  // Not init yet
+    return;
+  }
+  BlockIter::SeekToRestartPoint(0);
+  ParseNextKey();
+}
+
+// Calls the `ParseNextKey()` from `BlockIter`, but skips keys if an Mbb is
+// given and it doesn't intersect
+bool RtreeBlockIter::ParseNextKey() {
+  bool ret = false;
+  do {
+    ret = BlockIter::ParseNextKey();
+  } while (Valid() && !IntersectMbb(key(), query_mbb_));
+  return ret;
+}
+
+
+bool RtreeBlockIter::IntersectMbb(
+    const Slice& aa_orig,
+    const std::vector<Interval> bb) {
+  // If the query bounding box is empty, return true, which corresponds to a
+  // full table scan
+  if (bb.empty()) {
+    return true;
+  }
+
+  // Make a mutable copy of the slice
+  Slice aa = Slice(aa_orig);
+
+  // The key consists of the Keypath, and several intervals. The first
+  // interval is the Internal Id, all others are the other dimensions.
+  Slice ignore = Slice();
+  GetLengthPrefixedSlice(&aa, &ignore);
+
+  double aa_min;
+  double aa_max;
+  // If the bounding boxes don't intersect in one dimension, they won't
+  // intersect at all, hence we can return early
+  for (size_t ii = 0; ii < bb.size(); ii++) {
+    aa_min = *reinterpret_cast<const double*>(aa.data());
+    aa.remove_prefix(sizeof(double));
+    aa_max = *reinterpret_cast<const double*>(aa.data());
+    aa.remove_prefix(sizeof(double));
+
+    if(aa_min > bb[ii].max || bb[ii].min > aa_max) {
+      return false;
+    }
+  }
+  return true;
+}
+
 }  // namespace rocksdb

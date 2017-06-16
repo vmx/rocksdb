@@ -92,6 +92,9 @@ struct BlockBasedTableOptions {
     // it is ready to be used in production.
     // A two-level index implementation. Both levels are binary search indexes.
     kTwoLevelIndexSearch,
+
+    // Build a R-tree index
+    kRtreeSearch,
   };
 
   IndexType index_type = kBinarySearch;

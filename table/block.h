@@ -28,6 +28,7 @@
 #include "table/block_prefix_index.h"
 #include "table/internal_iterator.h"
 #include "util/random.h"
+#include "util/rtree.h"
 #include "util/sync_point.h"
 #include "format.h"
 
@@ -37,6 +38,7 @@ struct BlockContents;
 class Comparator;
 class BlockIter;
 class BlockPrefixIndex;
+class RtreeBlockIter;
 
 // BlockReadAmpBitmap is a bitmap that map the rocksdb::Block data bytes to
 // a bitmap with ratio bytes_per_bit. Whenever we access a range of bytes in
@@ -175,6 +177,13 @@ class Block {
                                 Statistics* stats = nullptr);
   void SetBlockPrefixIndex(BlockPrefixIndex* prefix_index);
 
+  // Returns an interator that only returns the data where the key matches
+  // the multidimensional bounding box given in the iterator context.
+  InternalIterator* NewRtreeIterator(const Comparator* comparator,
+                                     RtreeBlockIter* iter,
+                                     Statistics* stats,
+                                     RtreeIteratorContext* context);
+
   // Report an approximation of how much memory has been used.
   size_t ApproximateMemoryUsage() const;
 
@@ -199,8 +208,8 @@ class Block {
 class BlockIter : public InternalIterator {
  public:
   BlockIter()
-      : comparator_(nullptr),
-        data_(nullptr),
+      : data_(nullptr),
+        comparator_(nullptr),
         restarts_(0),
         num_restarts_(0),
         current_(0),
@@ -295,9 +304,21 @@ class BlockIter : public InternalIterator {
     return static_cast<uint32_t>(value_.data() - data_);
   }
 
+ protected:
+  const char* data_;       // underlying block contents
+  bool ParseNextKey();
+  void SeekToRestartPoint(uint32_t index) {
+    key_.Clear();
+    restart_index_ = index;
+    // current_ will be fixed by ParseNextKey();
+
+    // ParseNextKey() starts at the end of value_, so set value_ accordingly
+    uint32_t offset = GetRestartPoint(index);
+    value_ = Slice(data_ + offset, 0);
+  }
+
  private:
   const Comparator* comparator_;
-  const char* data_;       // underlying block contents
   uint32_t restarts_;      // Offset of restart array (list of fixed32)
   uint32_t num_restarts_;  // Number of uint32_t entries in restart array
 
@@ -355,19 +376,7 @@ class BlockIter : public InternalIterator {
     return DecodeFixed32(data_ + restarts_ + index * sizeof(uint32_t));
   }
 
-  void SeekToRestartPoint(uint32_t index) {
-    key_.Clear();
-    restart_index_ = index;
-    // current_ will be fixed by ParseNextKey();
-
-    // ParseNextKey() starts at the end of value_, so set value_ accordingly
-    uint32_t offset = GetRestartPoint(index);
-    value_ = Slice(data_ + offset, 0);
-  }
-
   void CorruptionError();
-
-  bool ParseNextKey();
 
   bool BinarySeek(const Slice& target, uint32_t left, uint32_t right,
                   uint32_t* index);
@@ -380,6 +389,62 @@ class BlockIter : public InternalIterator {
 
   bool PrefixSeek(const Slice& target, uint32_t* index);
 
+};
+
+
+class RtreeBlockIter : public BlockIter {
+public:
+  RtreeBlockIter(const Comparator* comparator,
+                 const char* data,
+                 uint32_t restarts,
+                 uint32_t num_restarts,
+                 SequenceNumber global_seqno,
+                 BlockReadAmpBitmap* read_amp_bitmap,
+                 const std::string& query)
+      : BlockIter() {
+    Initialize(comparator,
+               data,
+               restarts,
+               num_restarts,
+               global_seqno,
+               read_amp_bitmap,
+               query);
+  };
+
+  void Initialize(const Comparator* comparator,
+                  const char* data,
+                  uint32_t restarts,
+                  uint32_t num_restarts,
+                  SequenceNumber global_seqno,
+                  BlockReadAmpBitmap* read_amp_bitmap,
+                  const std::string& query) {
+    BlockIter::Initialize(comparator,
+                          data,
+                          restarts,
+                          num_restarts,
+                          nullptr,
+                          global_seqno,
+                          read_amp_bitmap);
+    // The query contains also the keypath, remove it first
+    Slice ignore;
+    Slice query_slice(query);
+    GetLengthPrefixedSlice(&query_slice, &ignore);
+    query_mbb_ = ReadMbb(query_slice);
+  }
+
+
+  virtual void Next() override;
+
+  virtual void SeekToFirst() override;
+
+  bool ParseNextKey();
+
+private:
+  std::vector<Interval> query_mbb_;
+
+  bool IntersectMbb(
+      const Slice& aa_orig,
+      const std::vector<Interval> bb);
 };
 
 }  // namespace rocksdb

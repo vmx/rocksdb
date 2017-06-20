@@ -101,6 +101,7 @@ typedef struct rocksdb_readoptions_t     rocksdb_readoptions_t;
 typedef struct rocksdb_seqfile_t         rocksdb_seqfile_t;
 typedef struct rocksdb_slicetransform_t  rocksdb_slicetransform_t;
 typedef struct rocksdb_snapshot_t        rocksdb_snapshot_t;
+typedef struct rocksdb_iterator_context_t rocksdb_iterator_context_t;
 typedef struct rocksdb_writablefile_t    rocksdb_writablefile_t;
 typedef struct rocksdb_writebatch_t      rocksdb_writebatch_t;
 typedef struct rocksdb_writebatch_wi_t   rocksdb_writebatch_wi_t;
@@ -302,6 +303,14 @@ extern ROCKSDB_LIBRARY_API const rocksdb_snapshot_t* rocksdb_create_snapshot(
 
 extern ROCKSDB_LIBRARY_API void rocksdb_release_snapshot(
     rocksdb_t* db, const rocksdb_snapshot_t* snapshot);
+
+extern ROCKSDB_LIBRARY_API
+rocksdb_iterator_context_t* rocksdb_create_rtree_iterator_context(
+    const char* data,
+    size_t size);
+
+extern ROCKSDB_LIBRARY_API void rocksdb_release_rtree_iterator_context(
+    rocksdb_iterator_context_t* ctx);
 
 /* Returns NULL if property name is unknown.
    Else returns a pointer to a malloc()-ed null-terminated value. */
@@ -640,6 +649,7 @@ enum {
   rocksdb_block_based_table_index_type_binary_search = 0,
   rocksdb_block_based_table_index_type_hash_search = 1,
   rocksdb_block_based_table_index_type_two_level_index_search = 2,
+  rocksdb_block_based_table_index_type_rtree_search = 3,
 };
 extern ROCKSDB_LIBRARY_API void rocksdb_block_based_options_set_index_type(
     rocksdb_block_based_table_options_t*, int);  // uses one of the above enums
@@ -863,6 +873,8 @@ extern ROCKSDB_LIBRARY_API void rocksdb_options_prepare_for_bulk_load(
     rocksdb_options_t*);
 extern ROCKSDB_LIBRARY_API void rocksdb_options_set_memtable_vector_rep(
     rocksdb_options_t*);
+extern ROCKSDB_LIBRARY_API void rocksdb_options_set_memtable_skip_list_mbb_rep(
+    rocksdb_options_t*);
 extern ROCKSDB_LIBRARY_API void rocksdb_options_set_memtable_prefix_bloom_size_ratio(
     rocksdb_options_t*, double);
 extern ROCKSDB_LIBRARY_API void rocksdb_options_set_max_compaction_bytes(
@@ -1042,6 +1054,8 @@ extern ROCKSDB_LIBRARY_API void rocksdb_readoptions_set_pin_data(
     rocksdb_readoptions_t*, unsigned char);
 extern ROCKSDB_LIBRARY_API void rocksdb_readoptions_set_total_order_seek(
     rocksdb_readoptions_t*, unsigned char);
+extern ROCKSDB_LIBRARY_API void rocksdb_readoptions_set_iterator_context(
+    rocksdb_readoptions_t*, rocksdb_iterator_context_t*);
 
 /* Write options */
 

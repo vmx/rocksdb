@@ -37,6 +37,7 @@
 #include "rocksdb/utilities/transaction.h"
 #include "rocksdb/utilities/transaction_db.h"
 #include "rocksdb/utilities/checkpoint.h"
+#include "util/rtree.h"
 
 using rocksdb::BytewiseComparator;
 using rocksdb::Cache;
@@ -96,6 +97,7 @@ using rocksdb::TransactionDB;
 using rocksdb::TransactionOptions;
 using rocksdb::Transaction;
 using rocksdb::Checkpoint;
+using rocksdb::IteratorContext;
 
 using std::shared_ptr;
 
@@ -109,6 +111,7 @@ struct rocksdb_iterator_t        { Iterator*         rep; };
 struct rocksdb_writebatch_t      { WriteBatch        rep; };
 struct rocksdb_writebatch_wi_t   { WriteBatchWithIndex* rep; };
 struct rocksdb_snapshot_t        { const Snapshot*   rep; };
+struct rocksdb_iterator_context_t { IteratorContext* rep; };
 struct rocksdb_flushoptions_t    { FlushOptions      rep; };
 struct rocksdb_fifo_compaction_options_t { CompactionOptionsFIFO rep; };
 struct rocksdb_readoptions_t {
@@ -941,6 +944,22 @@ void rocksdb_release_snapshot(
     const rocksdb_snapshot_t* snapshot) {
   db->rep->ReleaseSnapshot(snapshot->rep);
   delete snapshot;
+}
+
+rocksdb_iterator_context_t* rocksdb_create_rtree_iterator_context(
+    const char* data, size_t size) {
+  rocksdb_iterator_context_t* result = new rocksdb_iterator_context_t;
+  rocksdb::RtreeIteratorContext* iterator_context =
+	  new rocksdb::RtreeIteratorContext();
+  iterator_context->query_mbb = std::string(data, size);
+  result->rep = iterator_context;
+  return result;
+}
+
+void rocksdb_release_rtree_iterator_context(
+    rocksdb_iterator_context_t* ctx) {
+  delete ctx->rep;
+  delete ctx;
 }
 
 char* rocksdb_property_value(
@@ -2367,6 +2386,10 @@ void rocksdb_options_set_memtable_prefix_bloom_size_ratio(
   opt->rep.memtable_prefix_bloom_size_ratio = v;
 }
 
+void rocksdb_options_set_memtable_skip_list_mbb_rep(rocksdb_options_t *opt) {
+  opt->rep.memtable_factory.reset(new rocksdb::SkipListMbbFactory);
+}
+
 void rocksdb_options_set_memtable_huge_page_size(rocksdb_options_t* opt,
                                                  size_t v) {
   opt->rep.memtable_huge_page_size = v;
@@ -2712,6 +2735,11 @@ void rocksdb_readoptions_set_pin_data(rocksdb_readoptions_t* opt,
 void rocksdb_readoptions_set_total_order_seek(rocksdb_readoptions_t* opt,
                                               unsigned char v) {
   opt->rep.total_order_seek = v;
+}
+
+void rocksdb_readoptions_set_iterator_context(
+    rocksdb_readoptions_t* opt, rocksdb_iterator_context_t* ctx) {
+  opt->rep.iterator_context = (ctx ? ctx->rep : nullptr);
 }
 
 rocksdb_writeoptions_t* rocksdb_writeoptions_create() {

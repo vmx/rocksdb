@@ -348,8 +348,7 @@ class RtreeIndexBuilder : public IndexBuilder {
     Slice key = Slice(*last_key_in_current_block);
     Slice keypath;
 
-    // The key consists of the Keypath, and several intervals. The first
-    // interval is the Internal Id, all others are the other dimensions.
+    // The key consists of the Keypath, the Internal Id and two more dimensions
     GetLengthPrefixedSlice(&key, &keypath);
 
     // First call, there wasn't any keypath yet
@@ -379,11 +378,10 @@ class RtreeIndexBuilder : public IndexBuilder {
     Slice key = ExtractUserKey(const_key);
     Slice keypath;
 
-    // The key consists of the Keypath, and several intervals. The first
-    // interval is the Internal Id, all others are the other dimensions.
+    // The key consists of the Keypath, the Internal Id and two more dimensions
     GetLengthPrefixedSlice(&key, &keypath);
 
-    std::vector<Interval> mbb = ReadMbb(key);
+    Mbb mbb = ReadKeyMbb(key);
     expand_mbb(enclosing_mbb_, mbb);
   }
 
@@ -450,11 +448,11 @@ class RtreeIndexBuilder : public IndexBuilder {
   // The lowest level of the R-tree has the MBB of the block and the block
   // handle pointing to that block.
   struct LeafNode {
-    std::vector<Interval> mbb;
+    Mbb mbb;
     std::string encoded_block_handle;
   };
   // The current enclosing Mbb of the current leaf node
-  std::vector<Interval> enclosing_mbb_;
+  Mbb enclosing_mbb_;
   // The keypath of the previous key. If it is different, create a new R-tree
   std::string prev_keypath_;
   // The last key of a block. It's used for main filter block that points
@@ -477,31 +475,45 @@ class RtreeIndexBuilder : public IndexBuilder {
   bool finishing_indexes_ = false;
 
   // Expands the the first Mbb if the second one is bigger
-  void expand_mbb(std::vector<Interval>& to_expand,
-                  std::vector<Interval> expander) {
+  void expand_mbb(Mbb& to_expand, Mbb expander) {
     if (to_expand.empty()) {
       to_expand = expander;
     } else {
-      assert(to_expand.size() == expander.size());
-      for (size_t ii = 0; ii < to_expand.size(); ii++) {
-        if (expander[ii].min < to_expand[ii].min) {
-          to_expand[ii].min = expander[ii].min;
-        }
-        if (expander[ii].max > to_expand[ii].max) {
-          to_expand[ii].max = expander[ii].max;
-        }
+      if (expander.iid.min < to_expand.iid.min) {
+        to_expand.iid.min = expander.iid.min;
+      }
+      if (expander.iid.max > to_expand.iid.max) {
+        to_expand.iid.max = expander.iid.max;
+      }
+      if (expander.first.min < to_expand.first.min) {
+        to_expand.first.min = expander.first.min;
+      }
+      if (expander.first.max > to_expand.first.max) {
+        to_expand.first.max = expander.first.max;
+      }
+      if (expander.second.min < to_expand.second.min) {
+        to_expand.second.min = expander.second.min;
+      }
+      if (expander.second.max > to_expand.second.max) {
+        to_expand.second.max = expander.second.max;
       }
     }
   }
 
-  std::string serialize_mbb(const std::vector<Interval>& mbb) {
+  std::string serialize_mbb(const Mbb& mbb) {
     std::string serialized;
-    for (auto& interval: mbb) {
-      serialized.append(reinterpret_cast<const char*>(&interval.min),
-                        sizeof(double));
-      serialized.append(reinterpret_cast<const char*>(&interval.max),
-                        sizeof(double));
-    }
+    serialized.append(reinterpret_cast<const char*>(&mbb.iid.min),
+                      sizeof(uint64_t));
+    serialized.append(reinterpret_cast<const char*>(&mbb.iid.max),
+                      sizeof(uint64_t));
+    serialized.append(reinterpret_cast<const char*>(&mbb.first.min),
+                      sizeof(double));
+    serialized.append(reinterpret_cast<const char*>(&mbb.first.max),
+                      sizeof(double));
+    serialized.append(reinterpret_cast<const char*>(&mbb.second.min),
+                      sizeof(double));
+    serialized.append(reinterpret_cast<const char*>(&mbb.second.max),
+                      sizeof(double));
     return serialized;
   }
 
@@ -518,16 +530,16 @@ class RtreeIndexBuilder : public IndexBuilder {
 
   // Add the current parents level to the R-tree and return the new
   // level of parents
-  std::vector<std::vector<Interval>> serialize_parents(
-      std::string* rtree, std::vector<std::vector<Interval>> mbbs) {
+  std::vector<Mbb> serialize_parents(std::string* rtree,
+                                     std::vector<Mbb> mbbs) {
     // The offset the current level of nodes start rounded down to the
     // block boundary (which is determined by the inner node size)
     uint64_t level_offset =
         rtree->size() - (rtree->size() % kRtreeInnerNodeSize);
     // Parent nodes that are collecting duing the bottom-up build
-    std::vector<std::vector<Interval>> parents;
+    std::vector<Mbb> parents;
     // The MBB the encloses the current children
-    std::vector<Interval> enclosing_mbb;
+    Mbb enclosing_mbb;
 
     for (auto& mbb : mbbs) {
       std::string serialized_mbb = serialize_mbb(mbb);
@@ -554,9 +566,9 @@ class RtreeIndexBuilder : public IndexBuilder {
     // The unique pointer that wraps the leaf_nodes will free the memory
     std::string* rtree = new std::string();
     // Parent nodes that are collecting duing the bottom-up build
-    std::vector<std::vector<Interval>> parents;
+    std::vector<Mbb> parents;
     // The MBB the encloses the current children
-    std::vector<Interval> enclosing_mbb;
+    Mbb enclosing_mbb;
     // The offset where the current children start
     uint64_t offset = 0;
     // A collection of serialized leaf nodes with the maximum

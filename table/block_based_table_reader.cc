@@ -436,11 +436,11 @@ class RtreeIterator : public InternalIterator {
       index_block_key_.append(reinterpret_cast<const char*>(&min),
                               sizeof(double));
 
-      query_mbb_ = ReadMbb(query_slice);
+      query_mbb_ = ReadQueryMbb(query_slice);
     }
     // Full table scan
     else {
-      query_mbb_ = std::vector<Interval>();
+      query_mbb_ = Mbb();
     }
   }
 
@@ -468,7 +468,7 @@ class RtreeIterator : public InternalIterator {
 
     // TODO vmx 2017-07-04: Store the number of dimensions/single inner
     // node size in the footer, but hard-code it for now to get things working
-    mbb_data_size_ = 4 * sizeof(double);
+    mbb_data_size_ = 6 * sizeof(double);
 
     const uint64_t footer_size = sizeof(uint64_t);
     Slice footer =
@@ -573,7 +573,7 @@ class RtreeIterator : public InternalIterator {
       Slice encoded_mbb = SplitSlice(*nodes, mbb_data_size_);
       // Store the current Mbb so that it can be returned by `key()`
       mbb_ = encoded_mbb.ToString();
-      std::vector<Interval> decoded_mbb = ReadMbb(encoded_mbb);
+      Mbb decoded_mbb = ReadQueryMbb(encoded_mbb);
 
       // Store the current offset of the just read node
       next_offset += mbb_data_size_;
@@ -673,7 +673,7 @@ class RtreeIterator : public InternalIterator {
   std::string query_;
   // The keypath the iterator was created with. This one is used for
   // finding the right R-tree
-  std::vector<Interval> query_mbb_;
+  Mbb query_mbb_;
   // The key that is used to seek for the block that contains the leaf nodes
   // that are current accessed
   std::string index_block_key_;

@@ -293,7 +293,7 @@ class SkipListMbbRep : public SkipListRep {
         Slice keypath_slice;
         GetLengthPrefixedSlice(&query_slice, &keypath_slice);
         query_keypath_ = keypath_slice.ToString();
-        query_mbb_ = ReadMbb(query_slice);
+        query_mbb_ = ReadQueryMbb(query_slice);
       }
     }
 
@@ -309,7 +309,7 @@ class SkipListMbbRep : public SkipListRep {
 
    private:
     // The multi-dimensional bounding box the query was done with
-    std::vector<Interval> query_mbb_;
+    Mbb query_mbb_;
     // The keypath the query is on
     std::string query_keypath_;
 
@@ -327,7 +327,7 @@ class SkipListMbbRep : public SkipListRep {
         if (keypath.compare(Slice(query_keypath_)) != 0) {
           Next();
         } else {
-          std::vector<Interval> mbb = ReadMbb(key);
+          Mbb mbb = ReadKeyMbb(key);
           if (!IntersectMbb(mbb, query_mbb_)) {
             Next();
           }

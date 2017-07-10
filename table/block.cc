@@ -550,10 +550,7 @@ bool RtreeBlockIter::ParseNextKey() {
   return ret;
 }
 
-
-bool RtreeBlockIter::IntersectMbb(
-    const Slice& aa_orig,
-    const std::vector<Interval> bb) {
+bool RtreeBlockIter::IntersectMbb(const Slice& aa_orig, Mbb bb) {
   // If the query bounding box is empty, return true, which corresponds to a
   // full table scan
   if (bb.empty()) {
@@ -563,24 +560,31 @@ bool RtreeBlockIter::IntersectMbb(
   // Make a mutable copy of the slice
   Slice aa = Slice(aa_orig);
 
-  // The key consists of the Keypath, and several intervals. The first
-  // interval is the Internal Id, all others are the other dimensions.
+  // The key consists of the Keypath, the Internal Id and two more dimensions
   Slice ignore = Slice();
   GetLengthPrefixedSlice(&aa, &ignore);
 
-  double aa_min;
-  double aa_max;
+  uint64_t aa_iid = *reinterpret_cast<const uint64_t*>(aa.data());
+
   // If the bounding boxes don't intersect in one dimension, they won't
   // intersect at all, hence we can return early
-  for (size_t ii = 0; ii < bb.size(); ii++) {
-    aa_min = *reinterpret_cast<const double*>(aa.data());
-    aa.remove_prefix(sizeof(double));
-    aa_max = *reinterpret_cast<const double*>(aa.data());
-    aa.remove_prefix(sizeof(double));
+  if (aa_iid > bb.iid.max || bb.iid.min > aa_iid) {
+    return false;
+  }
 
-    if(aa_min > bb[ii].max || bb[ii].min > aa_max) {
-      return false;
-    }
+  double aa_min;
+  double aa_max;
+
+  aa_min = *reinterpret_cast<const double*>(aa.data() + 8);
+  aa_max = *reinterpret_cast<const double*>(aa.data() + 16);
+  if (aa_min > bb.first.max || bb.first.min > aa_max) {
+    return false;
+  }
+
+  aa_min = *reinterpret_cast<const double*>(aa.data() + 24);
+  aa_max = *reinterpret_cast<const double*>(aa.data() + 32);
+  if (aa_min > bb.second.max || bb.second.min > aa_max) {
+    return false;
   }
   return true;
 }

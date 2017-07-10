@@ -21,26 +21,31 @@ using namespace rocksdb;
 
 std::string kDBPath = "/tmp/rocksdb_rtree_example";
 
-std::string serialize_key(std::string keypath, double iid, double value) {
+std::string serialize_key(std::string keypath, uint64_t iid, double value) {
   std::string key;
   PutVarint32(&key, static_cast<uint32_t>(keypath.size()));
   key.append(keypath);
   // The R-tree stores boxes, hence duplicate the input values
-  key.append(reinterpret_cast<const char*>(&iid), sizeof(double));
-  key.append(reinterpret_cast<const char*>(&iid), sizeof(double));
+  key.append(reinterpret_cast<const char*>(&iid), sizeof(uint64_t));
+  key.append(reinterpret_cast<const char*>(&value), sizeof(double));
+  key.append(reinterpret_cast<const char*>(&value), sizeof(double));
   key.append(reinterpret_cast<const char*>(&value), sizeof(double));
   key.append(reinterpret_cast<const char*>(&value), sizeof(double));
   return key;
 }
 
-std::string serialize_query(std::string keypath, std::vector<Interval> mbb) {
+std::string serialize_query(std::string keypath, uint64_t iid_min,
+                            uint64_t iid_max, double value_min,
+                            double value_max) {
   std::string key;
   PutVarint32(&key, static_cast<uint32_t>(keypath.size()));
   key.append(keypath);
-  for (auto& interval: mbb) {
-    key.append(reinterpret_cast<const char*>(&interval.min), sizeof(double));
-    key.append(reinterpret_cast<const char*>(&interval.max), sizeof(double));
-  }
+  key.append(reinterpret_cast<const char*>(&iid_min), sizeof(uint64_t));
+  key.append(reinterpret_cast<const char*>(&iid_max), sizeof(uint64_t));
+  key.append(reinterpret_cast<const char*>(&value_min), sizeof(double));
+  key.append(reinterpret_cast<const char*>(&value_max), sizeof(double));
+  key.append(reinterpret_cast<const char*>(&value_min), sizeof(double));
+  key.append(reinterpret_cast<const char*>(&value_max), sizeof(double));
   return key;
 }
 
@@ -50,7 +55,7 @@ uint64_t decode_value(std::string& value) {
 
 struct Key {
   std::string keypath;
-  std::vector<Interval> mbb;
+  Mbb mbb;
 };
 
 
@@ -60,7 +65,7 @@ Key deserialize_key(Slice key_slice) {
   Slice keypath_slice;
   GetLengthPrefixedSlice(&key_slice, &keypath_slice);
   key.keypath = keypath_slice.ToString();
-  key.mbb = ReadMbb(key_slice);
+  key.mbb = ReadKeyMbb(key_slice);
   return key;
 }
 
@@ -158,8 +163,8 @@ int main() {
   // This scope is needed so that the unique pointer of the iterator runs
   // out of scope and cleans up things correctly
   {
-    std::vector<Interval> query_mbb1 = {{0, 1000000}, {2.1, 10.8}};
-    iterator_context.query_mbb = serialize_query(keypath, query_mbb1);
+    iterator_context.query_mbb =
+        serialize_query(keypath, 0, 1000000, 2.1, 10.8);
     read_options.iterator_context = &iterator_context;
     std::unique_ptr <rocksdb::Iterator> it(db->NewIterator(read_options));
 
@@ -172,8 +177,8 @@ int main() {
   }
 
   {
-    std::vector<Interval> query_mbb2 = {{0, 1000000}, {12.4, 30.3}};
-    iterator_context.query_mbb = serialize_query(keypath, query_mbb2);
+    iterator_context.query_mbb =
+        serialize_query(keypath, 0, 1000000, 12.4, 30.3);
     read_options.iterator_context = &iterator_context;
     std::unique_ptr <rocksdb::Iterator> it(db->NewIterator(read_options));
 
@@ -186,8 +191,8 @@ int main() {
   }
 
   {
-    std::vector<Interval> query_mbb3 = {{0, 1000000}, {0.0, 100.0}};
-    iterator_context.query_mbb = serialize_query(keypath, query_mbb3);
+    iterator_context.query_mbb =
+        serialize_query(keypath, 0, 1000000, 0.0, 100.0);
     read_options.iterator_context = &iterator_context;
     std::unique_ptr <rocksdb::Iterator> it(db->NewIterator(read_options));
 

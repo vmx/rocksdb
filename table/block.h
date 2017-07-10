@@ -429,7 +429,7 @@ public:
     Slice ignore;
     Slice query_slice(query);
     GetLengthPrefixedSlice(&query_slice, &ignore);
-    query_mbb_ = ReadMbb(query_slice);
+    query_mbb_ = ReadQueryMbb(query_slice);
   }
 
 
@@ -440,11 +440,9 @@ public:
   bool ParseNextKey();
 
 private:
-  std::vector<Interval> query_mbb_;
+ Mbb query_mbb_;
 
-  bool IntersectMbb(
-      const Slice& aa_orig,
-      const std::vector<Interval> bb);
+ bool IntersectMbb(const Slice& aa_orig, const Mbb bb);
 };
 
 }  // namespace rocksdb

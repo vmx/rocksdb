@@ -45,6 +45,7 @@
 #include "monitoring/perf_context_imp.h"
 #include "util/coding.h"
 #include "util/file_reader_writer.h"
+#include "util/rtree.h"
 #include "util/stop_watch.h"
 #include "util/string_util.h"
 #include "util/sync_point.h"
@@ -405,6 +406,8 @@ class RtreeIterator : public InternalIterator {
                          RtreeIteratorContext* context)
       : index_iter_(index_iter),
         valid_(false),
+        max_leaf_offset_(0),
+        mbb_data_size_(0),
         file_(file),
         footer_(footer),
         ioptions_(ioptions),
@@ -413,7 +416,26 @@ class RtreeIterator : public InternalIterator {
       Slice query_slice = Slice(context->query_mbb);
       Slice keypath_slice;
       GetLengthPrefixedSlice(&query_slice, &keypath_slice);
-      keypath_ = keypath_slice.ToString();
+      index_block_key_ = keypath_slice.ToString();
+      // Currently there's only a single R-tree per Keypath. Hence we can
+      // use the keypathand append an Internal Id of `0`. The rest of the
+      // key doesn't really matter, so we just use the minimal value for it.
+      // That will match the corresponding key during a seek.
+      uint64_t iid = 0;
+      double min = std::numeric_limits<double>::min();
+      index_block_key_.append(reinterpret_cast<const char*>(&iid),
+                              sizeof(uint64_t));
+      index_block_key_.append(reinterpret_cast<const char*>(&iid),
+                              sizeof(uint64_t));
+      index_block_key_.append(reinterpret_cast<const char*>(&min),
+                              sizeof(double));
+      index_block_key_.append(reinterpret_cast<const char*>(&min),
+                              sizeof(double));
+      index_block_key_.append(reinterpret_cast<const char*>(&min),
+                              sizeof(double));
+      index_block_key_.append(reinterpret_cast<const char*>(&min),
+                              sizeof(double));
+
       query_mbb_ = ReadMbb(query_slice);
     }
     // Full table scan
@@ -426,7 +448,9 @@ class RtreeIterator : public InternalIterator {
 
   virtual void SeekToFirst() override {
     // Find the right R-tree in the main index block
-    index_iter_->Seek(keypath_);
+    InternalKey ikey;
+    ikey.SetMinPossibleForUserKey(index_block_key_);
+    index_iter_->Seek(ikey.Encode());
 
     // Read the block that contains the R-tree from disk
     Slice index_value = index_iter_->value();
@@ -441,7 +465,59 @@ class RtreeIterator : public InternalIterator {
                           true /* decompress */,
                           Slice() /*compression_dict*/,
                           cache_options_);
-    valid_ = true;
+
+    // TODO vmx 2017-07-04: Store the number of dimensions/single inner
+    // node size in the footer, but hard-code it for now to get things working
+    mbb_data_size_ = 4 * sizeof(double);
+
+    const uint64_t footer_size = sizeof(uint64_t);
+    Slice footer =
+        Slice(rtree_block_.data.data() + rtree_block_.data.size() - footer_size,
+              footer_size);
+    GetFixed64(&footer, &max_leaf_offset_);
+    // There isn't a single root node, but several. The number can be found
+    // out from the maximum offset of the leaf nodes as it is a fully packed
+    // R-tree.
+    size_t num_root_nodes = max_leaf_offset_ / kRtreeInnerNodeSize;
+    if (max_leaf_offset_ % kRtreeInnerNodeSize > 0) {
+      num_root_nodes++;
+    }
+    size_t rest;
+    // The number of children per inner node
+    size_t num_children = kRtreeInnerNodeSize / mbb_data_size_;
+
+    level_infos_.push_front(
+        {0, kRtreeInnerNodeSize - (max_leaf_offset_ % kRtreeInnerNodeSize)});
+    // Find the number of root nodes, but also store the offsets where
+    // the levels of the R-tree start
+    while (num_root_nodes > num_children) {
+      rest = num_root_nodes % num_children;
+
+      LevelInfo level_info;
+      if (rest > 0) {
+        level_info.offset = level_infos_.front().offset +
+                            ((num_root_nodes)*kRtreeInnerNodeSize);
+        level_info.padding = kRtreeInnerNodeSize - (rest * mbb_data_size_);
+      } else {
+        level_info.offset = level_infos_.front().offset +
+                            ((num_root_nodes)*kRtreeInnerNodeSize);
+        level_info.padding = 0;
+      }
+      level_infos_.push_front(level_info);
+
+      num_root_nodes = num_root_nodes / num_children;
+      if (rest > 0) {
+        num_root_nodes++;
+      }
+    }
+    const size_t root_nodes_size = mbb_data_size_ * num_root_nodes;
+    uint64_t root_nodes_offset =
+        rtree_block_.data.size() - footer_size - root_nodes_size;
+    offsets_.clear();
+    offsets_.push_back(root_nodes_offset);
+    level_infos_.push_front(
+        {root_nodes_offset, kRtreeInnerNodeSize - root_nodes_size});
+
     Next();
   }
   virtual void SeekToLast() override {
@@ -458,31 +534,106 @@ class RtreeIterator : public InternalIterator {
     assert(!"RtreeIterator doesn't implement `SeekForPrev()`");
   }
 
-  virtual void Next() override {
-    const size_t num_dimensions = query_mbb_.size();
-    while (rtree_block_.data.size() > 0) {
-      Slice encoded_mbb = SplitSlice(rtree_block_.data,
-                                     num_dimensions * 2 * sizeof(double));
+  // Return `true` if a leaf node was found.
+  // `level` is the current level of the Rtree. The root level is 1.
+  bool traverse_child(uint64_t offset) {
+    // The nodes within the current child node from the current offset on
+    Slice* nodes;
+    Slice inner_node;
+
+    size_t level = 0;
+    for (size_t ii = 0; ii < level_infos_.size(); ii++) {
+      if (level_infos_[ii].offset <= offset) {
+        level = ii + 1;
+        break;
+      }
+    }
+
+    // Within a leaf node
+    if (offset < max_leaf_offset_) {
+      if (leaf_node_.size() == 0) {
+        leaf_node_ = GetLengthPrefixedSlice(rtree_block_.data.data() + offset);
+      }
+      nodes = &leaf_node_;
+    } else {
+      const size_t within_node_offset = offset % kRtreeInnerNodeSize;
+      size_t node_size = kRtreeInnerNodeSize - within_node_offset;
+      if (level == 1 ||
+          (level > 1 &&
+           offset + kRtreeInnerNodeSize >= level_infos_[level - 2].offset)) {
+        node_size -= level_infos_[level - 1].padding;
+      }
+      inner_node = Slice(rtree_block_.data.data() + offset, node_size);
+      nodes = &inner_node;
+    }
+
+    while (nodes->size() > 0) {
+      // The offset of the next node
+      size_t next_offset = offset;
+      Slice encoded_mbb = SplitSlice(*nodes, mbb_data_size_);
       // Store the current Mbb so that it can be returned by `key()`
       mbb_ = encoded_mbb.ToString();
       std::vector<Interval> decoded_mbb = ReadMbb(encoded_mbb);
 
-      // Decode the handle so that the slice is advanced correctly
-      BlockHandle handle;
-      Status s = handle.DecodeFrom(&rtree_block_.data);
-      // TODO vmx 2017-06-09: Don't en-/decode things, use the encoded one
-      // directly
-      // `EncodeTo()` appends to the given string, hence clear it first
-      leaf_node_.clear();
-      handle.EncodeTo(&leaf_node_);
+      // Store the current offset of the just read node
+      next_offset += mbb_data_size_;
+      // We are within a leaf node
+      if (offset < max_leaf_offset_) {
+        const size_t pre_handle_read_size = nodes->size();
+        // Leaf nodes also contain the handle to the actual data
+        BlockHandle handle;
+        Status s = handle.DecodeFrom(nodes);
+        // TODO vmx 2017-06-09: Don't en-/decode things, use the encoded
+        // one directly
+        // `EncodeTo()` appends to the given string, hence clear it first
+        leaf_node_handle_.clear();
+        handle.EncodeTo(&leaf_node_handle_);
 
-      // We found a matching child node
+        next_offset += pre_handle_read_size - nodes->size();
+      }
+
+      // The next offset is still within the same node
+      if (nodes->size() > 0) {
+        offsets_[offsets_.size() - 1] = next_offset;
+      }
+      // The next offset is already in a sibgling. Hence check the parent
+      // instead
+      else {
+        offsets_.pop_back();
+      }
+
       if (IntersectMbb(query_mbb_, decoded_mbb)) {
-        valid_ = true;
+        // We are within an inner node and can traverse deeper
+        if (offset >= max_leaf_offset_) {
+          size_t child_offset =
+              level_infos_[level].offset +
+              ((offset - level_infos_[level - 1].offset) / mbb_data_size_) *
+                  kRtreeInnerNodeSize;
+          offsets_.push_back(child_offset);
+          return traverse_child(child_offset);
+        }
+        // We are within a leaf node, hence stop the recursion
+        else {
+          valid_ = true;
+          return true;
+        }
+        // Else keep going through this node
+      }
+      offset = next_offset;
+    }
+    return false;
+  }
+
+  // A call to `Next()` always results in either a valid leaf node or
+  // no further results.
+  virtual void Next() override {
+    while (offsets_.size() > 0) {
+      bool ret = traverse_child(offsets_.back());
+      if (ret) {
         return;
       }
     }
-    // There's wasn't any matching leaf found
+    // No offsets left, we've traversed the full tree
     valid_ = false;
   }
 
@@ -497,32 +648,53 @@ class RtreeIterator : public InternalIterator {
   virtual Slice value() const override {
     // Return the handle to a matching leaf node. This is needed by
     // `TwoLevelIterator::InitDataBlock()`.
-    return Slice(leaf_node_);
+    return Slice(leaf_node_handle_);
   }
 
   virtual Status status() const override { return Status::OK(); }
 
  private:
+  // The levels of the R-tree are block aligned to `kRtreeInnerNodeSize`.
+  // Store the information about where it starts and how many bytes were
+  // needed for padding.
+  struct LevelInfo {
+    size_t offset;
+    size_t padding;
+  };
+
   // Iterator over the pointers to the Priority Search Trees
   InternalIterator* index_iter_;
   // Whether the iterator is currntly valid or not
   bool valid_;
   // `value()` returns a BlockHandle to a matching node
-  std::string leaf_node_;
+  std::string leaf_node_handle_;
   // The original query. It is needed as the key that is returned needs to
   // match the original query.
   std::string query_;
   // The keypath the iterator was created with. This one is used for
   // finding the right R-tree
   std::vector<Interval> query_mbb_;
-  // The block that contains the leaf nodes that are current accessed
-  std::string keypath_;
+  // The key that is used to seek for the block that contains the leaf nodes
+  // that are current accessed
+  std::string index_block_key_;
   // The multi-dimensional bounding box of the matching node. It is returned
   // when `key()` is called
   std::string mbb_;
   // The query_mbb the iterator was created with. This one is used for
   // traversing the R-tree
   BlockContents rtree_block_;
+  // The offset of each level down to the current node. The first element
+  // is the root node.
+  std::vector<uint64_t> offsets_;
+  // The maximum offset where the leaf nodes end (the data, without padding)
+  uint64_t max_leaf_offset_;
+  // The offsets where nodes of a level start. The root is the first element.
+  std::deque<LevelInfo> level_infos_;
+  // The size a single inner node has (it's only the MBB)
+  size_t mbb_data_size_;
+  // One node of the lowest index level, the one that contains the handles
+  // to the leaf nodes
+  Slice leaf_node_;
   // Things needed to call `ReadFromFile()`
   RandomAccessFileReader* file_;
   const Footer& footer_;

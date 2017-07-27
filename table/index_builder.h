@@ -370,6 +370,8 @@ class RtreeIndexBuilder : public IndexBuilder {
     leaf_nodes_.push_back(leaf_node);
 
     enclosing_mbb_.clear();
+
+    block_last_key_ = std::string(*last_key_in_current_block);
   }
 
   // Calculate the enclosing MBB for each block
@@ -409,7 +411,7 @@ class RtreeIndexBuilder : public IndexBuilder {
       Entry& last_entry = entries_.front();
       std::string handle_encoding;
       last_partition_block_handle.EncodeTo(&handle_encoding);
-      last_block_builder_.Add(last_entry.keypath, handle_encoding);
+      last_block_builder_.Add(last_entry.key, handle_encoding);
       entries_.pop_front();
     }
 
@@ -455,14 +457,17 @@ class RtreeIndexBuilder : public IndexBuilder {
   std::vector<Interval> enclosing_mbb_;
   // The keypath of the previous key. If it is different, create a new R-tree
   std::string prev_keypath_;
+  // The last key of a block. It's used for main filter block that points
+  // to the individual R-trees
+  std::string block_last_key_;
   // The MBBs that are the lowest level of the R-tree
   std::vector<LeafNode> leaf_nodes_;
-  // And entry consists of the keypath and its Priority Search Tree
+  // And entry consists of the last key of the block and its R-tree
   struct Entry {
-    std::string keypath;
+    std::string key;
     std::unique_ptr<std::string> rtree;
   };
-  // List of Priority Search Trees and their keys
+  // List of R-trees
   std::list<Entry> entries_;
   // The last index block that contains pointers to the other blocks
   //std::string last_block_;
@@ -499,6 +504,7 @@ class RtreeIndexBuilder : public IndexBuilder {
     }
     return serialized;
   }
+
   std::string* serialize_leaf_nodes(const std::vector<LeafNode>& leaf_nodes) {
     // The unique pointer that wraps the leaf_nodes will free the memory
     std::string* serialized = new std::string();
@@ -510,12 +516,115 @@ class RtreeIndexBuilder : public IndexBuilder {
     return serialized;
   }
 
+  // Add the current parents level to the R-tree and return the new
+  // level of parents
+  std::vector<std::vector<Interval>> serialize_parents(
+      std::string* rtree, std::vector<std::vector<Interval>> mbbs) {
+    // The offset the current level of nodes start rounded down to the
+    // block boundary (which is determined by the inner node size)
+    uint64_t level_offset =
+        rtree->size() - (rtree->size() % kRtreeInnerNodeSize);
+    // Parent nodes that are collecting duing the bottom-up build
+    std::vector<std::vector<Interval>> parents;
+    // The MBB the encloses the current children
+    std::vector<Interval> enclosing_mbb;
+
+    for (auto& mbb : mbbs) {
+      std::string serialized_mbb = serialize_mbb(mbb);
+      // Create a new parent for the certain node size
+      // The `-1` is for the case when the current node fits in exactly,
+      // then we don't want to create a new parent, but let it be done
+      // after this loop.
+      if ((rtree->size() - level_offset + serialized_mbb.size() - 1) /
+              kRtreeInnerNodeSize >
+          parents.size()) {
+        parents.push_back(enclosing_mbb);
+        enclosing_mbb.clear();
+      }
+      expand_mbb(enclosing_mbb, mbb);
+      rtree->append(serialized_mbb);
+    }
+    // There's always at least one left-over node that needs a parent
+    parents.push_back(enclosing_mbb);
+
+    return parents;
+  }
+
+  std::string* build_rtree(const std::vector<LeafNode>& leaf_nodes) {
+    // The unique pointer that wraps the leaf_nodes will free the memory
+    std::string* rtree = new std::string();
+    // Parent nodes that are collecting duing the bottom-up build
+    std::vector<std::vector<Interval>> parents;
+    // The MBB the encloses the current children
+    std::vector<Interval> enclosing_mbb;
+    // The offset where the current children start
+    uint64_t offset = 0;
+    // A collection of serialized leaf nodes with the maximum
+    // inner leaf ndde size
+    std::string serialized_leaf_nodes;
+    serialized_leaf_nodes.reserve(kRtreeInnerNodeSize);
+
+    for (auto& leaf_node : leaf_nodes) {
+      std::string serialized_mbb = serialize_mbb(leaf_node.mbb);
+
+      // Create a new parent if the maximum node size is reached
+      const size_t next_size = serialized_leaf_nodes.size() +
+                               serialized_mbb.size() +
+                               leaf_node.encoded_block_handle.size();
+      // Create a new parent if the node would become too large
+      if (next_size > kRtreeInnerNodeSize) {
+        parents.push_back(enclosing_mbb);
+        enclosing_mbb.clear();
+        PutVarint32(rtree, serialized_leaf_nodes.size());
+        rtree->append(serialized_leaf_nodes);
+        // Nodes are block alligned to the inner node size, hence fill
+        // up the space to the next block
+        const size_t next_block_offset = rtree->size() -
+                                         (rtree->size() % kRtreeInnerNodeSize) +
+                                         kRtreeInnerNodeSize;
+        rtree->resize(next_block_offset);
+        serialized_leaf_nodes.clear();
+
+        offset = rtree->size();
+      }
+      serialized_leaf_nodes.append(serialized_mbb);
+      serialized_leaf_nodes.append(leaf_node.encoded_block_handle);
+      expand_mbb(enclosing_mbb, leaf_node.mbb);
+    }
+
+    // There's always nodes that weren't flushed with a parent not being
+    // stored yet
+    PutVarint32(rtree, serialized_leaf_nodes.size());
+    rtree->append(serialized_leaf_nodes);
+    offset = rtree->size();
+    parents.push_back(enclosing_mbb);
+    enclosing_mbb.clear();
+
+    // Stop when it diverged to a single root node
+    do {
+      // Nodes are block alligned to the inner node size, hence fill
+      // up the space to the next block
+      const size_t next_block_offset = rtree->size() -
+                                       (rtree->size() % kRtreeInnerNodeSize) +
+                                       kRtreeInnerNodeSize;
+      // Only add padding if it isn't already on the block boundary
+      if (next_block_offset - rtree->size() < kRtreeInnerNodeSize) {
+        rtree->resize(next_block_offset);
+      }
+      parents = serialize_parents(rtree, parents);
+    } while (parents.size() > 1);
+
+    // Add a footer to the R-tree. It's 8 bytes and contains the offset
+    // where the leaf nodes end (the data, without the padding)
+    PutFixed64(rtree, offset);
+    return rtree;
+  }
+
   // Build an R-tree out of the current data and put it into the list of trees
   void flush_rtree() {
-    std::string* leaf_nodes = serialize_leaf_nodes(leaf_nodes_);
-    // TODO vmx 2017-06-07: Build up the actual R-tree
+    std::string* leaf_nodes = build_rtree(leaf_nodes_);
     entries_.push_back(
-        {prev_keypath_,
+        {block_last_key_,
          std::unique_ptr<std::string>(leaf_nodes)});
     leaf_nodes_.clear();
   }

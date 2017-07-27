@@ -12,6 +12,8 @@
 
 namespace rocksdb {
 
+static const size_t kRtreeInnerNodeSize = 1024;
+
 // There's an interval (which might be collapsed to a point) for every
 // dimension
 struct Interval {

@@ -437,8 +437,9 @@ class RtreeIndexBuilder : public IndexBuilder {
       total += entry.rtree->size();
     }
     // The current index block
-    // TODO vmx 2017-06-07: Get correct size instead of guessing "48"
-    total += leaf_nodes_.size() * 48;
+    for (auto& leaf_node: leaf_nodes_) {
+      total += leaf_node.size();
+    }
     return total;
   }
 
@@ -450,6 +451,10 @@ class RtreeIndexBuilder : public IndexBuilder {
   struct LeafNode {
     Mbb mbb;
     std::string encoded_block_handle;
+
+    size_t size() const {
+      return mbb.size() + encoded_block_handle.size();
+    }
   };
   // The current enclosing Mbb of the current leaf node
   Mbb enclosing_mbb_;

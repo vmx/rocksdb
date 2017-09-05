@@ -78,6 +78,11 @@ class Mbb {
     isempty_ = false;
   }
 
+  // It's 3 dimensions with 64-bit min and max values
+  size_t size() const {
+    return 48;
+  }
+
   friend std::ostream& operator<<(std::ostream& os, const Mbb& mbb) {
     return os << "[" << mbb.iid << "," << mbb.first << "," << mbb.second << "]";
   };

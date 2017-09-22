@@ -9,6 +9,7 @@
 #include <sstream>
 
 #include "rocksdb/db.h"
+#include "rocksdb/flush_block_policy.h"
 #include "rocksdb/options.h"
 #include "rocksdb/slice.h"
 #include "rocksdb/slice_transform.h"
@@ -93,8 +94,8 @@ class NoiseComparator : public rocksdb::Comparator {
     // keypaths are the same, compare the value. The previous
     // `GetLengthPrefixedSlice()` did advance the Slice already, hence a call
     // to `.data()` can directly be used.
-    const double* value_a = reinterpret_cast<const double*>(slice_a.data());
-    const double* value_b = reinterpret_cast<const double*>(slice_b.data());
+    const uint64_t* value_a = reinterpret_cast<const uint64_t*>(slice_a.data());
+    const uint64_t* value_b = reinterpret_cast<const uint64_t*>(slice_b.data());
 
     if (*value_a < *value_b) {
         return -1;
@@ -126,6 +127,8 @@ int main() {
   BlockBasedTableOptions block_based_options;
 
   block_based_options.index_type = BlockBasedTableOptions::kRtreeSearch;
+  block_based_options.flush_block_policy_factory.reset(
+      new NoiseFlushBlockPolicyFactory());
   options.table_factory.reset(NewBlockBasedTableFactory(block_based_options));
   options.memtable_factory.reset(new rocksdb::SkipListMbbFactory);
 
@@ -197,6 +200,28 @@ int main() {
     std::unique_ptr <rocksdb::Iterator> it(db->NewIterator(read_options));
 
     std::cout << "query 3" << std::endl;
+    // Iterate over the results and print the value
+    for (it->SeekToFirst(); it->Valid(); it->Next()) {
+      Key key = deserialize_key(it->key());
+      std::cout << key.keypath << " " << key.mbb << std::endl;
+    }
+  }
+
+  // Add more keys with a different keypath
+  const std::string otherkeypath = "anotherkeypath";
+  for (size_t ii = 0; ii < 3; ii++) {
+    std::string key3 = serialize_key(otherkeypath, 10321 + ii, 10.90);
+    s = db->Put(WriteOptions(), key3, "");
+    assert(s.ok());
+  }
+
+  {
+    iterator_context.query_mbb =
+        serialize_query(otherkeypath, 0, 1000000, 0.0, 100.0);
+    read_options.iterator_context = &iterator_context;
+    std::unique_ptr <rocksdb::Iterator> it(db->NewIterator(read_options));
+
+    std::cout << "query 4" << std::endl;
     // Iterate over the results and print the value
     for (it->SeekToFirst(); it->Valid(); it->Next()) {
       Key key = deserialize_key(it->key());

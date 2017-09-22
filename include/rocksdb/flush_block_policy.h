@@ -59,4 +59,13 @@ class FlushBlockBySizePolicyFactory : public FlushBlockPolicyFactory {
       const BlockBuilder& data_block_builder);
 };
 
+class NoiseFlushBlockPolicyFactory : public FlushBlockBySizePolicyFactory {
+ public:
+  const char* Name() const override { return "NoiseFlushBlockPolicyFactory"; }
+
+  FlushBlockPolicy* NewFlushBlockPolicy(
+      const BlockBasedTableOptions& table_options,
+      const BlockBuilder& data_block_builder) const override;
+};
+
 }  // rocksdb

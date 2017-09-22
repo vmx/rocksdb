@@ -370,6 +370,8 @@ class RtreeIndexBuilder : public IndexBuilder {
 
     enclosing_mbb_.clear();
 
+    // Use the full original key as the same comparison function as for
+    // all other keys is used
     block_last_key_ = std::string(*last_key_in_current_block);
   }
 
@@ -409,7 +411,11 @@ class RtreeIndexBuilder : public IndexBuilder {
       Entry& last_entry = entries_.front();
       std::string handle_encoding;
       last_partition_block_handle.EncodeTo(&handle_encoding);
-      last_block_builder_.Add(last_entry.key, handle_encoding);
+      // It needs to be an internal key for the comparison function
+      InternalKey ikey;
+      ikey.SetMinPossibleForUserKey(last_entry.key);
+      last_block_builder_.Add(ikey.Encode(), handle_encoding);
+
       entries_.pop_front();
     }
 

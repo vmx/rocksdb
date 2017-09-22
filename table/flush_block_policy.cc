@@ -7,6 +7,7 @@
 #include "rocksdb/flush_block_policy.h"
 #include "rocksdb/slice.h"
 #include "table/block_builder.h"
+#include "util/coding.h"
 
 #include <cassert>
 
@@ -76,5 +77,55 @@ FlushBlockPolicy* FlushBlockBySizePolicyFactory::NewFlushBlockPolicy(
     const BlockBuilder& data_block_builder) {
   return new FlushBlockBySizePolicy(size, deviation, data_block_builder);
 }
+
+// Flush block policy for Noise. Flush for every different keypath or size,
+// whatever comes first
+class NoiseFlushBlockPolicy: public FlushBlockBySizePolicy {
+ public:
+  // @params block_size:           Approximate size of user data packed per
+  //                               block.
+  // @params block_size_deviation: This is used to close a block before it
+  //                               reaches the configured
+  NoiseFlushBlockPolicy(const uint64_t block_size,
+                        const uint64_t block_size_deviation,
+                        const BlockBuilder& data_block_builder)
+      : FlushBlockBySizePolicy(block_size, block_size_deviation,
+                               data_block_builder) {}
+
+  virtual bool Update(const Slice& key,
+                      const Slice& value) override {
+    Slice key_slice = Slice(key);
+    Slice keypath;
+    GetLengthPrefixedSlice(&key_slice, &keypath);
+
+    // First call, there wasn't any keypath yet
+    if (prev_keypath_.empty()) {
+      prev_keypath_ = std::string(keypath.data(), keypath.size());
+    }
+
+    bool size_reached = FlushBlockBySizePolicy::Update(key, value);
+    if (size_reached) {
+      return true;
+    }
+    // The size limit isn't reached yet, but perhaps the keypath changed
+    else if (keypath.compare(Slice(prev_keypath_)) != 0) {
+      prev_keypath_ = std::string(keypath.data(), keypath.size());
+      return true;
+    }
+
+    return false;
+  }
+
+ private:
+  std::string prev_keypath_;
+};
+
+FlushBlockPolicy* NoiseFlushBlockPolicyFactory::NewFlushBlockPolicy(
+    const BlockBasedTableOptions& table_options,
+    const BlockBuilder& data_block_builder) const {
+  return new NoiseFlushBlockPolicy(
+      table_options.block_size, table_options.block_size_deviation,
+      data_block_builder);
+};
 
 }  // namespace rocksdb

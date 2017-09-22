@@ -416,11 +416,11 @@ class RtreeIterator : public InternalIterator {
       Slice query_slice = Slice(context->query_mbb);
       Slice keypath_slice;
       GetLengthPrefixedSlice(&query_slice, &keypath_slice);
-      index_block_key_ = keypath_slice.ToString();
       // Currently there's only a single R-tree per Keypath. Hence we can
-      // use the keypathand append an Internal Id of `0`. The rest of the
+      // use the Keypath and append an Internal Id of `0`. The rest of the
       // key doesn't really matter, so we just use the minimal value for it.
       // That will match the corresponding key during a seek.
+      PutLengthPrefixedSlice(&index_block_key_, keypath_slice);
       uint64_t iid = 0;
       double min = std::numeric_limits<double>::min();
       index_block_key_.append(reinterpret_cast<const char*>(&iid),
@@ -447,11 +447,30 @@ class RtreeIterator : public InternalIterator {
   virtual bool Valid() const override { return valid_; }
 
   virtual void SeekToFirst() override {
+    // Full table-scan
+    if (index_block_key_.empty()) {
+      index_iter_->SeekToFirst();
+    }
     // Find the right R-tree in the main index block
-    InternalKey ikey;
-    ikey.SetMinPossibleForUserKey(index_block_key_);
-    index_iter_->Seek(ikey.Encode());
+    else {
+      InternalKey ikey;
+      ikey.SetMinPossibleForUserKey(index_block_key_);
+      // It needs to be an internal key for the comparison function
+      index_iter_->Seek(ikey.Encode());
+    }
 
+    // No valid key found after seek
+    if (!index_iter_->Valid()) {
+      return;
+    }
+
+    RtreeSeekToFirst();
+  }
+
+  // Within the index, seek to the first item of the R-tree the index_iter_
+  // points to
+  void RtreeSeekToFirst() {
+    assert(index_iter_->Valid());
     // Read the block that contains the R-tree from disk
     Slice index_value = index_iter_->value();
     BlockHandle handle;
@@ -520,6 +539,7 @@ class RtreeIterator : public InternalIterator {
 
     Next();
   }
+
   virtual void SeekToLast() override {
     assert(!"RtreeIterator doesn't implement `SeekToLast()`");
   }
@@ -633,7 +653,17 @@ class RtreeIterator : public InternalIterator {
         return;
       }
     }
-    // No offsets left, we've traversed the full tree
+
+    // We do a full table-scan over all R-trees
+    if (index_block_key_.empty()) {
+      index_iter_->Next();
+      if (index_iter_->Valid()) {
+        RtreeSeekToFirst();
+        return;
+      }
+    }
+
+    // No offsets left, we've traversed the full R-tree
     valid_ = false;
   }
 

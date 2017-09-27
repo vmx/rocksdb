@@ -61,4 +61,19 @@ Mbb ReadQueryMbb(Slice data) {
   return mbb;
 }
 
+Options NoiseOptions(const Comparator& comparator) {
+  Options options;
+  BlockBasedTableOptions block_based_options;
+
+  block_based_options.index_type = BlockBasedTableOptions::kRtreeSearch;
+  block_based_options.flush_block_policy_factory.reset(
+      new NoiseFlushBlockPolicyFactory());
+
+  options.comparator = &comparator;
+  options.table_factory.reset(NewBlockBasedTableFactory(block_based_options));
+  options.memtable_factory.reset(new rocksdb::SkipListMbbFactory);
+
+  return options;
+}
+
 }  // namespace rocksdb

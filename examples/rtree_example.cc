@@ -119,18 +119,9 @@ class NoiseComparator : public rocksdb::Comparator {
 
 int main() {
   DB* db;
-  Options options;
 
   NoiseComparator cmp;
-  options.comparator = &cmp;
-
-  BlockBasedTableOptions block_based_options;
-
-  block_based_options.index_type = BlockBasedTableOptions::kRtreeSearch;
-  block_based_options.flush_block_policy_factory.reset(
-      new NoiseFlushBlockPolicyFactory());
-  options.table_factory.reset(NewBlockBasedTableFactory(block_based_options));
-  options.memtable_factory.reset(new rocksdb::SkipListMbbFactory);
+  Options options = NoiseOptions(cmp);
 
   const std::string keypath = "somekeypath";
 

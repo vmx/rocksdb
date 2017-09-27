@@ -8,7 +8,8 @@
 #pragma once
 #include <ostream>
 
-#include "rocksdb/options.h"
+#include "rocksdb/flush_block_policy.h"
+#include "rocksdb/table.h"
 
 namespace rocksdb {
 
@@ -106,5 +107,7 @@ extern Mbb ReadKeyMbb(Slice data);
 // Internal Id, the other two is values.
 // It modifies the key slice.
 extern Mbb ReadQueryMbb(Slice data);
+
+extern Options NoiseOptions(const Comparator& comparator);
 
 }  // namespace rocksdb

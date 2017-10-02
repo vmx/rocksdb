@@ -662,6 +662,8 @@ rocksdb_block_based_options_set_cache_index_and_filter_blocks(
 extern ROCKSDB_LIBRARY_API void
 rocksdb_block_based_options_set_pin_l0_filter_and_index_blocks_in_cache(
     rocksdb_block_based_table_options_t*, unsigned char);
+void rocksdb_block_based_options_set_flush_block_policy_noise(
+    rocksdb_block_based_table_options_t*);
 extern ROCKSDB_LIBRARY_API void rocksdb_options_set_block_based_table_factory(
     rocksdb_options_t* opt, rocksdb_block_based_table_options_t* table_options);
 

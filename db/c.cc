@@ -20,6 +20,7 @@
 #include "rocksdb/db.h"
 #include "rocksdb/env.h"
 #include "rocksdb/filter_policy.h"
+#include "rocksdb/flush_block_policy.h"
 #include "rocksdb/iterator.h"
 #include "rocksdb/merge_operator.h"
 #include "rocksdb/options.h"
@@ -1885,6 +1886,12 @@ void rocksdb_block_based_options_set_cache_index_and_filter_blocks(
 void rocksdb_block_based_options_set_pin_l0_filter_and_index_blocks_in_cache(
     rocksdb_block_based_table_options_t* options, unsigned char v) {
   options->rep.pin_l0_filter_and_index_blocks_in_cache = v;
+}
+
+void rocksdb_block_based_options_set_flush_block_policy_noise(
+    rocksdb_block_based_table_options_t* options) {
+  options->rep.flush_block_policy_factory.reset(
+      new rocksdb::NoiseFlushBlockPolicyFactory);
 }
 
 void rocksdb_options_set_block_based_table_factory(

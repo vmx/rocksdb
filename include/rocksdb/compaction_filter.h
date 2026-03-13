@@ -10,6 +10,7 @@
 #define STORAGE_ROCKSDB_INCLUDE_COMPACTION_FILTER_H_
 
 #include <cassert>
+#include <cstdint>
 #include <memory>
 #include <string>
 #include <vector>

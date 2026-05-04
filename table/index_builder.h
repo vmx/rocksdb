@@ -600,12 +600,14 @@ class RtreeIndexBuilder : public IndexBuilder {
         enclosing_mbb.clear();
         PutVarint32(rtree, serialized_leaf_nodes.size());
         rtree->append(serialized_leaf_nodes);
-        // Nodes are block alligned to the inner node size, hence fill
-        // up the space to the next block
-        const size_t next_block_offset = rtree->size() -
-                                         (rtree->size() % kRtreeInnerNodeSize) +
-                                         kRtreeInnerNodeSize;
-        rtree->resize(next_block_offset);
+        // Pad up to the next inner-node-sized boundary, but only if we are
+        // not already exactly on one — otherwise we would emit a full block
+        // of phantom padding that the iterator's `num_root_nodes` math then
+        // miscounts as an extra LIN, sending seeks into zero bytes.
+        const size_t remainder = rtree->size() % kRtreeInnerNodeSize;
+        if (remainder != 0) {
+          rtree->resize(rtree->size() + kRtreeInnerNodeSize - remainder);
+        }
         serialized_leaf_nodes.clear();
 
         offset = rtree->size();

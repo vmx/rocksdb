@@ -17,7 +17,10 @@ bool IntersectMbb(Mbb aa, Mbb bb) {
   }
 
   // If the bounding boxes don't intersect in one dimension, they won't
-  // intersect at all, hence we can return early
+  // intersect at all, hence we can return early. The fields hold the
+  // byte-orderable encoded form, but numeric comparison on the host-order
+  // uint64_ts gives the same answer as the comparisons on the original
+  // (decoded) values.
   if (aa.iid.min > bb.iid.max || bb.iid.min > aa.iid.max) {
     return false;
   }
@@ -30,34 +33,22 @@ bool IntersectMbb(Mbb aa, Mbb bb) {
   return true;
 }
 
-void ReadMbbValues(Mbb& mbb, Slice& data) {
-  double min = *reinterpret_cast<const double*>(data.data());
-  double max = *reinterpret_cast<const double*>(data.data() + 8);
-  mbb.set_first(min, max);
-  min = *reinterpret_cast<const double*>(data.data() + 16);
-  max = *reinterpret_cast<const double*>(data.data() + 24);
-  mbb.set_second(min, max);
-}
-
 Mbb ReadKeyMbb(Slice data) {
   Mbb mbb;
   // In a key the first dimension is a single value only
-  const uint64_t iid = *reinterpret_cast<const uint64_t*>(data.data());
-  mbb.set_iid(iid, iid);
-  data.remove_prefix(sizeof(uint64_t));
-  ReadMbbValues(mbb, data);
+  const uint64_t iid = ReadBeU64(data.data());
+  mbb.iid = {iid, iid};
+  mbb.first = {ReadBeU64(data.data() + 8), ReadBeU64(data.data() + 16)};
+  mbb.second = {ReadBeU64(data.data() + 24), ReadBeU64(data.data() + 32)};
   return mbb;
 }
 
 Mbb ReadQueryMbb(Slice data) {
   Mbb mbb;
-  // In a key the first dimension is a single value only
-  const uint64_t iid_min = *reinterpret_cast<const uint64_t*>(data.data());
-  const uint64_t iid_max =
-      *reinterpret_cast<const uint64_t*>(data.data() + sizeof(uint64_t));
-  mbb.set_iid(iid_min, iid_max);
-  data.remove_prefix(2 * sizeof(uint64_t));
-  ReadMbbValues(mbb, data);
+  // In a query the first dimension is a [min, max] range
+  mbb.iid = {ReadBeU64(data.data()), ReadBeU64(data.data() + 8)};
+  mbb.first = {ReadBeU64(data.data() + 16), ReadBeU64(data.data() + 24)};
+  mbb.second = {ReadBeU64(data.data() + 32), ReadBeU64(data.data() + 40)};
   return mbb;
 }
 

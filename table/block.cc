@@ -560,11 +560,14 @@ bool RtreeBlockIter::IntersectMbb(const Slice& aa_orig, Mbb bb) {
   // Make a mutable copy of the slice
   Slice aa = Slice(aa_orig);
 
-  // The key consists of the Keypath, the Internal Id and two more dimensions
+  // The key consists of the Keypath, the Internal Id and two more dimensions.
+  // Each numeric field is read as a host-order uint64_t from its big-endian
+  // byte-orderable on-disk form, then compared against the (also encoded)
+  // fields of `bb`.
   Slice ignore = Slice();
-  GetLengthPrefixedSlice(&aa, &ignore);
+  GetPrefixLengthPrefixedSlice(&aa, &ignore);
 
-  uint64_t aa_iid = *reinterpret_cast<const uint64_t*>(aa.data());
+  uint64_t aa_iid = ReadBeU64(aa.data());
 
   // If the bounding boxes don't intersect in one dimension, they won't
   // intersect at all, hence we can return early
@@ -572,17 +575,14 @@ bool RtreeBlockIter::IntersectMbb(const Slice& aa_orig, Mbb bb) {
     return false;
   }
 
-  double aa_min;
-  double aa_max;
-
-  aa_min = *reinterpret_cast<const double*>(aa.data() + 8);
-  aa_max = *reinterpret_cast<const double*>(aa.data() + 16);
+  uint64_t aa_min = ReadBeU64(aa.data() + 8);
+  uint64_t aa_max = ReadBeU64(aa.data() + 16);
   if (aa_min > bb.first.max || bb.first.min > aa_max) {
     return false;
   }
 
-  aa_min = *reinterpret_cast<const double*>(aa.data() + 24);
-  aa_max = *reinterpret_cast<const double*>(aa.data() + 32);
+  aa_min = ReadBeU64(aa.data() + 24);
+  aa_max = ReadBeU64(aa.data() + 32);
   if (aa_min > bb.second.max || bb.second.min > aa_max) {
     return false;
   }

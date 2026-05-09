@@ -291,7 +291,7 @@ class SkipListMbbRep : public SkipListRep {
             reinterpret_cast<RtreeIteratorContext*>(iterator_context);
         Slice query_slice = Slice(context->query_mbb);
         Slice keypath_slice;
-        GetLengthPrefixedSlice(&query_slice, &keypath_slice);
+        GetPrefixLengthPrefixedSlice(&query_slice, &keypath_slice);
         query_keypath_ = keypath_slice.ToString();
         query_mbb_ = ReadQueryMbb(query_slice);
       }
@@ -322,7 +322,7 @@ class SkipListMbbRep : public SkipListRep {
         Slice internal_key = GetLengthPrefixedSlice(key());
         Slice key = ExtractUserKey(internal_key);
         Slice keypath;
-        GetLengthPrefixedSlice(&key, &keypath);
+        GetPrefixLengthPrefixedSlice(&key, &keypath);
         // If the keypath is different, they are disjoint
         if (keypath.compare(Slice(query_keypath_)) != 0) {
           Next();

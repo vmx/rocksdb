@@ -415,26 +415,24 @@ class RtreeIterator : public InternalIterator {
     if (context != nullptr) {
       Slice query_slice = Slice(context->query_mbb);
       Slice keypath_slice;
-      GetLengthPrefixedSlice(&query_slice, &keypath_slice);
+      GetPrefixLengthPrefixedSlice(&query_slice, &keypath_slice);
       // Currently there's only a single R-tree per Keypath. Hence we can
       // use the Keypath and append an Internal Id of `0`. The rest of the
       // key doesn't really matter, so we just use the minimal value for it.
       // That will match the corresponding key during a seek.
-      PutLengthPrefixedSlice(&index_block_key_, keypath_slice);
-      uint64_t iid = 0;
-      double min = std::numeric_limits<double>::min();
-      index_block_key_.append(reinterpret_cast<const char*>(&iid),
-                              sizeof(uint64_t));
-      index_block_key_.append(reinterpret_cast<const char*>(&iid),
-                              sizeof(uint64_t));
-      index_block_key_.append(reinterpret_cast<const char*>(&min),
-                              sizeof(double));
-      index_block_key_.append(reinterpret_cast<const char*>(&min),
-                              sizeof(double));
-      index_block_key_.append(reinterpret_cast<const char*>(&min),
-                              sizeof(double));
-      index_block_key_.append(reinterpret_cast<const char*>(&min),
-                              sizeof(double));
+      PutPrefixLengthPrefixedSlice(&index_block_key_, keypath_slice);
+      // Synthetic seek key in the on-disk byte-orderable form: iid range
+      // [0,0] and four bbox endpoints encoded from `numeric_limits::min()`,
+      // matching the original semantics.
+      const uint64_t encoded_iid = 0;
+      const uint64_t encoded_min =
+          EncodeByteOrderableF64(std::numeric_limits<double>::min());
+      AppendBeU64(&index_block_key_, encoded_iid);
+      AppendBeU64(&index_block_key_, encoded_iid);
+      AppendBeU64(&index_block_key_, encoded_min);
+      AppendBeU64(&index_block_key_, encoded_min);
+      AppendBeU64(&index_block_key_, encoded_min);
+      AppendBeU64(&index_block_key_, encoded_min);
 
       query_mbb_ = ReadQueryMbb(query_slice);
     }

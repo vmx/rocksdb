@@ -349,7 +349,7 @@ class RtreeIndexBuilder : public IndexBuilder {
     Slice keypath;
 
     // The key consists of the Keypath, the Internal Id and two more dimensions
-    GetLengthPrefixedSlice(&key, &keypath);
+    GetPrefixLengthPrefixedSlice(&key, &keypath);
 
     // First call, there wasn't any keypath yet
     if (prev_keypath_.empty()) {
@@ -381,7 +381,7 @@ class RtreeIndexBuilder : public IndexBuilder {
     Slice keypath;
 
     // The key consists of the Keypath, the Internal Id and two more dimensions
-    GetLengthPrefixedSlice(&key, &keypath);
+    GetPrefixLengthPrefixedSlice(&key, &keypath);
 
     Mbb mbb = ReadKeyMbb(key);
     expand_mbb(enclosing_mbb_, mbb);
@@ -512,19 +512,16 @@ class RtreeIndexBuilder : public IndexBuilder {
   }
 
   std::string serialize_mbb(const Mbb& mbb) {
+    // Per-block MBB metadata is written in the same byte-orderable form the
+    // mbb fields hold (host-order uint64_t serialized big-endian) so that
+    // `ReadQueryMbb` can be used to parse it back.
     std::string serialized;
-    serialized.append(reinterpret_cast<const char*>(&mbb.iid.min),
-                      sizeof(uint64_t));
-    serialized.append(reinterpret_cast<const char*>(&mbb.iid.max),
-                      sizeof(uint64_t));
-    serialized.append(reinterpret_cast<const char*>(&mbb.first.min),
-                      sizeof(double));
-    serialized.append(reinterpret_cast<const char*>(&mbb.first.max),
-                      sizeof(double));
-    serialized.append(reinterpret_cast<const char*>(&mbb.second.min),
-                      sizeof(double));
-    serialized.append(reinterpret_cast<const char*>(&mbb.second.max),
-                      sizeof(double));
+    AppendBeU64(&serialized, mbb.iid.min);
+    AppendBeU64(&serialized, mbb.iid.max);
+    AppendBeU64(&serialized, mbb.first.min);
+    AppendBeU64(&serialized, mbb.first.max);
+    AppendBeU64(&serialized, mbb.second.min);
+    AppendBeU64(&serialized, mbb.second.max);
     return serialized;
   }
 

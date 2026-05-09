@@ -82,56 +82,56 @@ std::vector<Rect> ReadRects(const std::string& path) {
   return rects;
 }
 
-// Key layout: varint32(keypath.size()) | keypath | iid (host uint64) |
-//             x_min, x_max, y_min, y_max (host doubles).
+// Key layout: prefix_varint(keypath.size()) | keypath | iid_BE |
+//             x_min_enc_BE | x_max_enc_BE | y_min_enc_BE | y_max_enc_BE
+// All encoded fields are byte-orderable (see util/rtree.h), so memcmp on the
+// bytes after the keypath gives the same ordering as numeric comparisons on
+// the original values.
 std::string SerializeKey(const std::string& keypath, uint64_t iid,
                          const Rect& r) {
   std::string key;
-  PutVarint32(&key, static_cast<uint32_t>(keypath.size()));
+  PutPrefixVarint32(&key, static_cast<uint32_t>(keypath.size()));
   key.append(keypath);
-  key.append(reinterpret_cast<const char*>(&iid), sizeof(uint64_t));
-  key.append(reinterpret_cast<const char*>(&r.x_min), sizeof(double));
-  key.append(reinterpret_cast<const char*>(&r.x_max), sizeof(double));
-  key.append(reinterpret_cast<const char*>(&r.y_min), sizeof(double));
-  key.append(reinterpret_cast<const char*>(&r.y_max), sizeof(double));
+  AppendBeU64(&key, iid);
+  AppendBeU64(&key, EncodeByteOrderableF64(r.x_min));
+  AppendBeU64(&key, EncodeByteOrderableF64(r.x_max));
+  AppendBeU64(&key, EncodeByteOrderableF64(r.y_min));
+  AppendBeU64(&key, EncodeByteOrderableF64(r.y_max));
   return key;
 }
 
-// Query layout: varint32(keypath.size()) | keypath | iid_min, iid_max
-//               (host uint64) | x_min, x_max, y_min, y_max (host doubles).
+// Query layout: prefix_varint(keypath.size()) | keypath | iid_min_BE |
+//               iid_max_BE | x_min_enc_BE | x_max_enc_BE | y_min_enc_BE |
+//               y_max_enc_BE
 std::string SerializeQuery(const std::string& keypath, uint64_t iid_min,
                            uint64_t iid_max, const Rect& q) {
   std::string key;
-  PutVarint32(&key, static_cast<uint32_t>(keypath.size()));
+  PutPrefixVarint32(&key, static_cast<uint32_t>(keypath.size()));
   key.append(keypath);
-  key.append(reinterpret_cast<const char*>(&iid_min), sizeof(uint64_t));
-  key.append(reinterpret_cast<const char*>(&iid_max), sizeof(uint64_t));
-  key.append(reinterpret_cast<const char*>(&q.x_min), sizeof(double));
-  key.append(reinterpret_cast<const char*>(&q.x_max), sizeof(double));
-  key.append(reinterpret_cast<const char*>(&q.y_min), sizeof(double));
-  key.append(reinterpret_cast<const char*>(&q.y_max), sizeof(double));
+  AppendBeU64(&key, iid_min);
+  AppendBeU64(&key, iid_max);
+  AppendBeU64(&key, EncodeByteOrderableF64(q.x_min));
+  AppendBeU64(&key, EncodeByteOrderableF64(q.x_max));
+  AppendBeU64(&key, EncodeByteOrderableF64(q.y_min));
+  AppendBeU64(&key, EncodeByteOrderableF64(q.y_max));
   return key;
 }
 
-// Comparator: keypath first (length-prefixed), then a numeric compare on
-// the iid stored as a host-order uint64_t. Each key has a unique iid, so
-// the further bbox bytes never need to be examined for ordering.
-class NoiseComparator : public Comparator {
+// Comparator: keypath first (as a length-prefixed slice), then memcmp on the
+// rest. Because every field after the keypath is in byte-orderable form,
+// memcmp on those bytes matches the numeric ordering the rtree expects.
+class NoiseByteComparator : public Comparator {
  public:
-  const char* Name() const override { return "rocksdb.NoiseComparator"; }
+  const char* Name() const override { return "rocksdb.NoiseByteComparator"; }
 
   int Compare(const Slice& a, const Slice& b) const override {
     Slice sa(a), sb(b);
     Slice keypath_a, keypath_b;
-    GetLengthPrefixedSlice(&sa, &keypath_a);
-    GetLengthPrefixedSlice(&sb, &keypath_b);
+    GetPrefixLengthPrefixedSlice(&sa, &keypath_a);
+    GetPrefixLengthPrefixedSlice(&sb, &keypath_b);
     int kp = keypath_a.compare(keypath_b);
     if (kp != 0) return kp;
-    const uint64_t* va = reinterpret_cast<const uint64_t*>(sa.data());
-    const uint64_t* vb = reinterpret_cast<const uint64_t*>(sb.data());
-    if (*va < *vb) return -1;
-    if (*va > *vb) return 1;
-    return 0;
+    return sa.compare(sb);
   }
 
   void FindShortestSeparator(std::string*, const Slice&) const override {}
@@ -163,7 +163,7 @@ int main(int argc, char** argv) {
   }
 
   Options options;
-  NoiseComparator cmp;
+  NoiseByteComparator cmp;
   options.comparator = &cmp;
   options.create_if_missing = true;
 
@@ -214,9 +214,9 @@ int main(int argc, char** argv) {
   ro.iterator_context = &iter_ctx;
 
   // Brute-force querydata writes hits in (query-index, data-index) order.
-  // We mirror that: outer loop over queries, and the iterator returns hits
-  // in iid order (the comparator above), which is also data-file order
-  // since iid = file index.
+  // We mirror that: outer loop over queries, and the iterator returns hits in
+  // memcmp order over the encoded key bytes — i.e. iid order, which is the
+  // data file order since iid = file index.
   char rect_buf[kRectBytes];
   for (size_t qi = 0; qi < queries.size(); ++qi) {
     iter_ctx.query_mbb = SerializeQuery(
@@ -226,13 +226,17 @@ int main(int argc, char** argv) {
     for (it->SeekToFirst(); it->Valid(); it->Next()) {
       Slice key = it->key();
       Slice keypath_slice;
-      GetLengthPrefixedSlice(&key, &keypath_slice);
-      // Pre-encoding `Mbb::Interval` holds the original `double`s.
+      GetPrefixLengthPrefixedSlice(&key, &keypath_slice);
+      // ReadKeyMbb returns fields in the byte-orderable encoded form.
       Mbb mbb = ReadKeyMbb(key);
-      StoreLeF64(rect_buf + 0, mbb.first.min);
-      StoreLeF64(rect_buf + 8, mbb.first.max);
-      StoreLeF64(rect_buf + 16, mbb.second.min);
-      StoreLeF64(rect_buf + 24, mbb.second.max);
+      double x_min = DecodeByteOrderableF64(mbb.first.min);
+      double x_max = DecodeByteOrderableF64(mbb.first.max);
+      double y_min = DecodeByteOrderableF64(mbb.second.min);
+      double y_max = DecodeByteOrderableF64(mbb.second.max);
+      StoreLeF64(rect_buf + 0, x_min);
+      StoreLeF64(rect_buf + 8, x_max);
+      StoreLeF64(rect_buf + 16, y_min);
+      StoreLeF64(rect_buf + 24, y_max);
       out.write(rect_buf, kRectBytes);
       ++total_hits;
     }

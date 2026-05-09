@@ -428,7 +428,7 @@ public:
     // The query contains also the keypath, remove it first
     Slice ignore;
     Slice query_slice(query);
-    GetLengthPrefixedSlice(&query_slice, &ignore);
+    GetPrefixLengthPrefixedSlice(&query_slice, &ignore);
     query_mbb_ = ReadQueryMbb(query_slice);
   }
 

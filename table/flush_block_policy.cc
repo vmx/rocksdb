@@ -8,6 +8,7 @@
 #include "rocksdb/slice.h"
 #include "table/block_builder.h"
 #include "util/coding.h"
+#include "util/rtree.h"
 
 #include <cassert>
 
@@ -96,7 +97,7 @@ class NoiseFlushBlockPolicy: public FlushBlockBySizePolicy {
                       const Slice& value) override {
     Slice key_slice = Slice(key);
     Slice keypath;
-    GetLengthPrefixedSlice(&key_slice, &keypath);
+    GetPrefixLengthPrefixedSlice(&key_slice, &keypath);
 
     // First call, there wasn't any keypath yet
     if (prev_keypath_.empty()) {
